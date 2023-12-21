@@ -1,0 +1,6 @@
+﻿  ReflectiveDLLInjector.cpp
+C:\Users\vsant\Github\MPlusPlus\ReflectiveDLLInjector\ReflectiveDLLInjector.cpp(34,5): warning C4996: 'mbstowcs': This function or variable may be unsafe. Consider using mbstowcs_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\vsant\Github\MPlusPlus\ReflectiveDLLInjector\ReflectiveDLLInjector.cpp(278,35): warning C4312: 'type cast': conversion from 'DWORD' to 'LPVOID' of greater size
+C:\Users\vsant\Github\MPlusPlus\ReflectiveDLLInjector\ReflectiveDLLInjector.cpp(347,89): warning C4311: 'type cast': pointer truncation from 'PBYTE' to 'DWORD'
+C:\Users\vsant\Github\MPlusPlus\ReflectiveDLLInjector\ReflectiveDLLInjector.cpp(347,89): warning C4302: 'type cast': truncation from 'PBYTE' to 'DWORD'
+  ReflectiveDLLInjector.vcxproj -> C:\Users\vsant\Github\MPlusPlus\ReflectiveDLLInjector\x64\Debug\ReflectiveDLLInjector.exe
