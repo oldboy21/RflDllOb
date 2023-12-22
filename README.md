@@ -1,3 +1,5 @@
 # RflDllOb
 Reflective DLL Injection - M++
-BLOG POST COMING SOON AIUTOOOOO
+
+Reflective DLL and its very personal Injector. 
+Please refer to [my blog](https://oldboy21.github.io/) about this development journey. 
