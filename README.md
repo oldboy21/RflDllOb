@@ -33,3 +33,7 @@ Before having my own successful implementation I had adapted Ekko sleep mask to 
 SLEAPING makes use of timer thread workers in order to resume threads I had previously created in a suspended state and with a crafted context. This time the threads working during the “Sleep” time have their own stack so they do not step on each other, moreover as bonus point the ResumeThread function (as substitute for NtContinue) used by the timer thread does not need to be added as a valid target in the Control Flow Guard table, meaning one less IOC.
 
 To conclude: SWAPPALA and SLEAPING are used to load the reflective DLL in a private mapping backed by physical memory and swap-it with a memory mapping backed by a legit DLL on disk, at its very own legit address. All of this orchestrated at sleeping time by worker threads created in a suspended state and resumed via OS timers.
+
+## Little Demo
+
+[<img src="" width="50%">](https://vimeo.com/955537475?share=copy "Reflective DLL Ob In Action")
