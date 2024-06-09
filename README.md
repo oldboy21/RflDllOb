@@ -7,8 +7,9 @@ Please refer to [my blog](https://oldboy21.github.io/posts/2023/12/all-i-want-fo
 
 # RflDllOb - Next Gen
 
-Finally after months of research, the pumped-up version of RflDll-Ob is available. 
-Code is not perfect, might definitely contain some errors, if you want use it please review first. Do not do nasty stuff though, educational purposes only! 
+Finally after months of research, the pumped-up version of RflDll-Ob is available. Couple of things to keep in mind: 
+* It works only with the logic implemented in this [Injector](https://github.com/oldboy21/RflDllOb/tree/main/ReflectiveDLLInjector-NG).  
+* Code is not perfect, might definitely contain some errors, if you want use it please review first. Do not do nasty stuff though, educational purposes only! 
 
 This version is based on the following: 
 
