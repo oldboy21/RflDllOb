@@ -37,3 +37,5 @@ To conclude: SWAPPALA and SLEAPING are used to load the reflective DLL in a priv
 ## Little Demo
 
 [![Reflective DLL Next Gen](https://raw.githubusercontent.com/oldboy21/RflDllOb/main/imgs/rfldllobng.png)](https://vimeo.com/955537475?share=copy)
+
+Fun fact: at a certain point in the video, exactly with the Reflective DLL mapping pops up, the song "Suddenly I see" starts playing. Nothing of that was planned in advance. 
