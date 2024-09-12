@@ -537,9 +537,7 @@ BOOL APIENTRY DllMain( HMODULE hModule,
     {
     case DLL_PROCESS_ATTACH:
     {
-        MessageBoxA(NULL, "Made it to Main Function", "Reflective DLL", MB_OK | MB_ICONINFORMATION);
        
-
         PBYTE oldMemory = NULL;
         
         //even if unampped it's in the PEB
@@ -573,7 +571,8 @@ BOOL APIENTRY DllMain( HMODULE hModule,
         do {
             
             if (Sleaping(myBase, sacDllHandle, malDllHandle, viewSize) == -1) {
-            //nightmares
+                //nightmares
+                MessageBoxA(NULL, "Sleaping", "With Nightmares", MB_OK | MB_ICONINFORMATION);
                 return FALSE;
             }
             MessageBoxA(NULL, "Sleaping", "Swappala", MB_OK | MB_ICONINFORMATION);

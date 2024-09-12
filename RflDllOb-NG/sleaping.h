@@ -93,6 +93,9 @@ int Sleaping(PVOID ImageBaseDLL, HANDLE sacDllHandle, HANDLE malDllHandle, SIZE_
     PVOID ResumeThreadAddress = NULL;
 
     hTimerQueue = CreateTimerQueue();
+    if (hTimerQueue == NULL) {
+        return -1;
+    }
 
     ResumeThreadAddress = GetProcAddress(GetModuleHandleA("kernel32.dll"), "ResumeThread");
 
@@ -104,6 +107,16 @@ int Sleaping(PVOID ImageBaseDLL, HANDLE sacDllHandle, HANDLE malDllHandle, SIZE_
 
         WaitForMultipleObjects(4, ThreadArray, TRUE, INFINITE);
     }
+
+    if (DeleteTimerQueue(hTimerQueue) == 0) {
+    
+        return -1;
+    }
+
+    if (context) VirtualFree(context, 0, MEM_RELEASE);
+    if (contextB) VirtualFree(contextB, 0, MEM_RELEASE);
+    if (contextC) VirtualFree(contextC, 0, MEM_RELEASE);
+    if (contextD) VirtualFree(contextD, 0, MEM_RELEASE);
 
     return 0;
 
