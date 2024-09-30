@@ -1,7 +1,0 @@
-﻿  ReflectiveDLLInjector.cpp
-C:\Users\vsant\Github\RflDllOb\ReflectiveDLLInjector\ReflectiveDLLInjector.cpp(34,5): warning C4996: 'mbstowcs': This function or variable may be unsafe. Consider using mbstowcs_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
-C:\Users\vsant\Github\RflDllOb\ReflectiveDLLInjector\ReflectiveDLLInjector.cpp(268,35): warning C4312: 'type cast': conversion from 'DWORD' to 'LPVOID' of greater size
-C:\Users\vsant\Github\RflDllOb\ReflectiveDLLInjector\ReflectiveDLLInjector.cpp(342,89): warning C4311: 'type cast': pointer truncation from 'PBYTE' to 'DWORD'
-C:\Users\vsant\Github\RflDllOb\ReflectiveDLLInjector\ReflectiveDLLInjector.cpp(342,89): warning C4302: 'type cast': truncation from 'PBYTE' to 'DWORD'
-  LINK : /LTCG specified but no code generation required; remove /LTCG from the link command line to improve linker performance
-  ReflectiveDLLInjector.vcxproj -> C:\Users\vsant\Github\RflDllOb\ReflectiveDLLInjector\x64\Release\ReflectiveDLLInjector.exe

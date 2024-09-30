@@ -1,4 +1,0 @@
-﻿  dllmain.cpp
-C:\Users\Winbo\Github\MPlusPlus\ReflectiveDLL\dllmain.cpp(648): warning C4700: uninitialized local variable 'new_ptr' used
-     Creating library C:\Users\Winbo\Github\MPlusPlus\ReflectiveDLL\x64\Debug\ReflectiveDLL.lib and object C:\Users\Winbo\Github\MPlusPlus\ReflectiveDLL\x64\Debug\ReflectiveDLL.exp
-  ReflectiveDLL.vcxproj -> C:\Users\Winbo\Github\MPlusPlus\ReflectiveDLL\x64\Debug\ReflectiveDLL.dll
