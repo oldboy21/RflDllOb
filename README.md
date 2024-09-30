@@ -54,3 +54,11 @@ This demo helps to understand how the Reflective DLL Ob hides itself behind a le
 [![Reflective DLL Next Gen](https://raw.githubusercontent.com/oldboy21/RflDllOb/main/imgs/rfldllobng.png)](https://vimeo.com/955537475?share=copy)
 
 Fun fact: at a certain point in the video, exactly when the Reflective DLL mapping pops up, the song "Suddenly I see" of KT Tunstall starts playing. Nothing of that was planned in advance. 
+
+## Credits
+
+Aia, almost forgot: 
+
+* [MalDev Academy](https://maldevacademy.com/)
+* [Hunt Sleeping Beacons Author](https://github.com/thefLink/Hunt-Sleeping-Beacons) 
+* Thanks to whoever post code and resources online, Mal Dev Academy, Sektor7, open source community and all the people that helps brainstorming, you are golden 
