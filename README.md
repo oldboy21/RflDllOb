@@ -8,7 +8,7 @@ Please refer to [my blog](https://oldboy21.github.io/posts/2023/12/all-i-want-fo
 # RflDllOb - Next Gen
 
 Finally after months of research, the pumped-up version of RflDll-Ob is available. Couple of things to keep in mind: 
-* It works only with the logic implemented in this [Injector](https://github.com/oldboy21/RflDllOb/tree/main/ReflectiveDLLInjector-NG).  
+* It works only with the logic implemented in this [Injector](https://github.com/oldboy21/RflDllOb/tree/main/RflDllOb-NG/ReflectiveDLLInjector-NG).  
 * Code is not perfect, might definitely contain some errors, if you want use it please review first. Do not do nasty stuff though, educational purposes only! 
 
 This version is based on the following: 
@@ -17,6 +17,7 @@ This version is based on the following:
 * [Reflective DLL Got Indirect Syscall skills](https://oldboy21.github.io/posts/2024/02/reflective-dll-got-indirect-syscall-skills/) 
 * [SWAPPALA: Why Change When You Can Hide?](https://oldboy21.github.io/posts/2024/05/swappala-why-change-when-you-can-hide/) 
 * [SLE(A)PING Issues: SWAPPALA and Reflective DLL Friends Forever](https://oldboy21.github.io/posts/2024/06/sleaping-issues-swappala-and-reflective-dll-friends-forever/) 
+* [Timer Callbacks Spoofing to Improve your SLEAP and SWAPPALA Untold](https://oldboy21.github.io/posts/2024/09/timer-callbacks-spoofing-to-improve-your-sleap-and-swappala-untold/)
 
 ## Sit down, I will tell you a story
 
@@ -34,7 +35,19 @@ SLEAPING makes use of timer thread workers in order to resume threads I had prev
 
 To conclude: SWAPPALA and SLEAPING are used to load the reflective DLL in a private mapping backed by physical memory and swap-it with a memory mapping backed by a legit DLL on disk, at its very own legit address. All of this orchestrated at sleeping time by worker threads created in a suspended state and resumed via OS timers.
 
+## RflDllOb-NG VS In-memory Scanners
+
+Results, at the time of the commit, who knows how's going to be (!?)
+
+![HSB](https://raw.githubusercontent.com/oldboy21/RflDllOb/main/imgs/hsb.png?raw=true)
+
+![Moneta](https://raw.githubusercontent.com/oldboy21/RflDllOb/main/imgs/moneta.png?raw=true)
+
+![pesieve](https://raw.githubusercontent.com/oldboy21/RflDllOb/main/imgs/pesieve.png?raw=true)
+
 ## Little Demo
+
+This demo helps to understand how the Reflective DLL Ob hides itself behind a legit dll at sleeping time. 
 
 [![Reflective DLL Next Gen](https://raw.githubusercontent.com/oldboy21/RflDllOb/main/imgs/rfldllobng.png)](https://vimeo.com/955537475?share=copy)
 
