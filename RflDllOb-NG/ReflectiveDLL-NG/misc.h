@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Windows.h>
-#include "funcaliases.h"
+#include "headers.h"
 
 /*---------FUNCTIONS PROTOTYPES--------------*/
 FARPROC GPARO(IN HMODULE hModule, IN int ordinal);
@@ -139,6 +139,9 @@ bool CompareNStringASCII(CHAR str1[], CHAR str2[], int n) {
 
 
     int i = 0;
+    if (custom_strlen(str1) == 0 || custom_strlen(str2) == 0 || custom_strlen(str1) < n || custom_strlen(str2) < n) {
+        return FALSE;
+    }
     while (str1[i] && str2[i] && i < n) {
 
         if (str1[i] != str2[i]) {

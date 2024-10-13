@@ -43,8 +43,5 @@
     <ClInclude Include="sleaping.h">
       <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="funcaliases.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
   </ItemGroup>
 </Project>

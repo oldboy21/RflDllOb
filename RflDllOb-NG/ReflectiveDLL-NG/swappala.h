@@ -3,27 +3,12 @@
 #include <Windows.h>
 #include "syscalls.h"
 #include "headers.h"
-#include "funcaliases.h"
 
 /*--------------------FUNCTION TO ENUMERATE SECTION HANDLES-------------*/
 
 HANDLE FindSectionHandle(PSYSCALL_ENTRY zwFunctions, fnGetProcessId GPID) {
 
-    //THIS WORKS and can be used for debugging 
-    CHAR msg[] = { 'f', 'r', 'e', 'k', '\0' };
-    WCHAR kernel32[] = { L'K', L'e', L'r', L'n', L'e', L'l', L'3', L'2', L'.', L'd', L'l', L'l', L'\0' };
-    CHAR messageBox[] = { 'M', 'e', 's', 's', 'a', 'g', 'e', 'B', 'o', 'x', 'A', '\0' };
-    WCHAR user32[] = { L'U', L's', L'e', L'r', L'3', L'2', L'.', L'd', L'l', L'l', L'\0' };
-    CHAR createFileA[] = { 'C', 'r', 'e', 'a', 't', 'e', 'F', 'i', 'l', 'e', 'A', '\0' };
-    CHAR filePath[] = { 'C', ':', '\\', 'U', 's', 'e', 'r', 's', '\\', 'v', 's', 'a', 'n', 't', '\\', 'f', 'r', 'e', 'n', 'k', '.', 't', 'x', 't', '\0' };
-    CHAR writeFile[] = { 'W', 'r', 'i', 't', 'e', 'F', 'i', 'l', 'e', '\0' };
-    CHAR closeHandle[] = { 'C', 'l', 'o', 's', 'e', 'H', 'a', 'n', 'd', 'l', 'e', '\0' };
-
-    fnWriteFile WF = (fnWriteFile)GPAR(GMHR(kernel32), writeFile);
-    fnCreateFileA CF = (fnCreateFileA)GPAR(GMHR(kernel32), createFileA);
-    fnCloseHandle CH = (fnCloseHandle)GPAR(GMHR(kernel32), closeHandle);
-    CHAR buffersmg[256] = { 0x00 };
-
+    
 
     /*----variables-----*/
     WCHAR section[] = { L'S', L'e', L'c', L't', L'i', L'o', L'n', L'\0' };
@@ -179,12 +164,11 @@ HANDLE FindSectionHandle(PSYSCALL_ENTRY zwFunctions, fnGetProcessId GPID) {
 
                     memoryinfo = (PUNICODE_STRING)buffermeminfo;
 
-                    //ConvertPointerToString(viewBase,buffersmg,20 );
+                   
 
                     if (memoryinfo->Buffer != NULL) {
 
-                        //this print the string correctly
-                        custom_wcstombs(buffersmg, memoryinfo->Buffer, memoryinfo->Length / sizeof(WCHAR));
+                        
 
                         //if the path contains the SRH.dll 
                         if (containsSubstringUnicode(memoryinfo->Buffer, SRH, memoryinfo->Length / sizeof(WCHAR), 8)) {

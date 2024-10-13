@@ -164,7 +164,6 @@
     <MASM Include="syscall.asm" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="funcaliases.h" />
     <ClInclude Include="headers.h" />
     <ClInclude Include="hwbp.h" />
     <ClInclude Include="misc.h" />
